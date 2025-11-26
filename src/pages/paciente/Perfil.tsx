@@ -341,7 +341,7 @@ export default function PerfilPaciente() {
       <div className="bg-white rounded-xl shadow p-6 grid grid-cols-1 md:grid-cols-3 gap-6">
         {/* Columna: Foto */}
         <div className="md:col-span-1">
-          <div className="w-28 h-28 rounded-full bg-gray-200 overflow-hidden">
+          <div className="w-40 h-40 rounded-full bg-gray-200 overflow-hidden">
             {u.foto ? (
               <img src={u.foto} alt="Foto de perfil" className="w-full h-full object-cover" />
             ) : (

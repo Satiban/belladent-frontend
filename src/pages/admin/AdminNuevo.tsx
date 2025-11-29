@@ -4,6 +4,7 @@ import { Link, useNavigate } from "react-router-dom";
 import axios from "axios";
 import { api } from "../../api/axios";
 import { ShieldPlus, Loader2, Eye, EyeOff } from "lucide-react";
+import { useFotoPerfil } from "../../hooks/useFotoPerfil";
 
 const API = import.meta.env.VITE_API_URL || "http://localhost:8000/api/v1";
 
@@ -38,10 +39,10 @@ function isAdult18(dateStr: string): boolean {
   if (!dateStr) return false;
   const dob = new Date(dateStr + "T00:00:00");
   if (Number.isNaN(dob.getTime())) return false;
-  
+
   // Validar que la fecha no sea anterior a 1930
   if (dob.getFullYear() < 1930) return false;
-  
+
   const today = new Date();
   let years = today.getFullYear() - dob.getFullYear();
   const mDiff = today.getMonth() - dob.getMonth();
@@ -88,6 +89,7 @@ type Errors = Partial<
 ========================= */
 export default function AdminNuevo() {
   const navigate = useNavigate();
+  const { subirFoto } = useFotoPerfil();
 
   const [saving, setSaving] = useState(false);
   const [errorTop, setErrorTop] = useState("");
@@ -100,7 +102,9 @@ export default function AdminNuevo() {
   const [cedulaExists, setCedulaExists] = useState<boolean | null>(null);
   const [emailExists, setEmailExists] = useState<boolean | null>(null);
   const [celularExists, setCelularExists] = useState<boolean | null>(null);
-  const [fechaNacimientoValid, setFechaNacimientoValid] = useState<boolean | null>(null);
+  const [fechaNacimientoValid, setFechaNacimientoValid] = useState<
+    boolean | null
+  >(null);
   const lastQueried = useRef<{
     cedula?: string;
     email?: string;
@@ -441,12 +445,15 @@ export default function AdminNuevo() {
       fd.append("id_rol", "4");
       fd.append("activo", "true");
 
-      // Foto opcional
-      if (form.foto) fd.append("foto", form.foto);
-
-      await api.post(`/usuarios/`, fd, {
+      const userRes = await api.post(`/usuarios/`, fd, {
         headers: { "Content-Type": "multipart/form-data" },
       });
+      const id_usuario = userRes.data.id_usuario;
+
+      // === SUBIR FOTO (si eligió una) ===
+      if (form.foto) {
+        await subirFoto(id_usuario, form.foto);
+      }
 
       // Mostrar toast de éxito
       setShowSuccess(true);
@@ -476,7 +483,9 @@ export default function AdminNuevo() {
       {showSuccess && (
         <div className="fixed top-4 right-4 z-50 animate-in fade-in zoom-in duration-200">
           <div className="rounded-xl bg-green-600 text-white shadow-lg px-4 py-3">
-            <div className="font-semibold">¡Administrador creado correctamente!</div>
+            <div className="font-semibold">
+              ¡Administrador creado correctamente!
+            </div>
             <div className="text-sm text-white/90">Redirigiendo…</div>
           </div>
         </div>
@@ -712,28 +721,48 @@ export default function AdminNuevo() {
                       const dob = new Date(dateStr + "T00:00:00");
                       if (Number.isNaN(dob.getTime())) {
                         setFechaNacimientoValid(false);
-                        setErrors((prev) => ({ ...prev, fecha_nacimiento: "Fecha inválida" }));
+                        setErrors((prev) => ({
+                          ...prev,
+                          fecha_nacimiento: "Fecha inválida",
+                        }));
                         return;
                       }
                       if (dob.getFullYear() < 1930) {
                         setFechaNacimientoValid(false);
-                        setErrors((prev) => ({ ...prev, fecha_nacimiento: "La fecha no puede ser anterior a 1930" }));
+                        setErrors((prev) => ({
+                          ...prev,
+                          fecha_nacimiento:
+                            "La fecha no puede ser anterior a 1930",
+                        }));
                         return;
                       }
                       const today = new Date();
                       let years = today.getFullYear() - dob.getFullYear();
                       const mDiff = today.getMonth() - dob.getMonth();
-                      if (mDiff < 0 || (mDiff === 0 && today.getDate() < dob.getDate())) years--;
+                      if (
+                        mDiff < 0 ||
+                        (mDiff === 0 && today.getDate() < dob.getDate())
+                      )
+                        years--;
                       if (years < 18) {
                         setFechaNacimientoValid(false);
-                        setErrors((prev) => ({ ...prev, fecha_nacimiento: "Debe ser mayor de 18 años" }));
+                        setErrors((prev) => ({
+                          ...prev,
+                          fecha_nacimiento: "Debe ser mayor de 18 años",
+                        }));
                         return;
                       }
                       setFechaNacimientoValid(true);
                       setErrors((prev) => ({ ...prev, fecha_nacimiento: "" }));
                     }}
                     min="1930-01-01"
-                    max={new Date(new Date().setFullYear(new Date().getFullYear() - 18)).toISOString().split('T')[0]}
+                    max={
+                      new Date(
+                        new Date().setFullYear(new Date().getFullYear() - 18)
+                      )
+                        .toISOString()
+                        .split("T")[0]
+                    }
                     className={inputCls("fecha_nacimiento")}
                     required
                   />
@@ -742,9 +771,12 @@ export default function AdminNuevo() {
                       {errors.fecha_nacimiento}
                     </p>
                   )}
-                  {!errors.fecha_nacimiento && fechaNacimientoValid === true && (
-                    <p className="text-xs text-green-600 mt-1">Fecha válida</p>
-                  )}
+                  {!errors.fecha_nacimiento &&
+                    fechaNacimientoValid === true && (
+                      <p className="text-xs text-green-600 mt-1">
+                        Fecha válida
+                      </p>
+                    )}
                   {!errors.fecha_nacimiento && !fechaNacimientoValid && (
                     <p className="text-xs text-gray-500 mt-1">
                       Mínimo 18 años (desde 1930)

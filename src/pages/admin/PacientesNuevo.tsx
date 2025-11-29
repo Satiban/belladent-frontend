@@ -4,6 +4,7 @@ import { Link, useNavigate } from "react-router-dom";
 import axios from "axios";
 import { api } from "../../api/axios";
 import { Eye, EyeOff, Loader2, User, ArrowLeft } from "lucide-react";
+import { useFotoPerfil } from "../../hooks/useFotoPerfil";
 
 const API = import.meta.env.VITE_API_URL || "http://localhost:8000/api/v1";
 const PRIMARY = "#0070B7";
@@ -60,34 +61,39 @@ function isValidEmail(email: string): boolean {
 function getFechaMin6Meses(): string {
   const hoy = new Date();
   hoy.setMonth(hoy.getMonth() - 6);
-  return hoy.toISOString().split('T')[0];
+  return hoy.toISOString().split("T")[0];
 }
 
-function validateBirthDate(isoDate: string): { valid: boolean; message?: string; isMinor?: boolean } {
+function validateBirthDate(isoDate: string): {
+  valid: boolean;
+  message?: string;
+  isMinor?: boolean;
+} {
   if (!isoDate) return { valid: false };
-  
+
   const birth = new Date(isoDate + "T00:00:00");
-  if (Number.isNaN(birth.getTime())) return { valid: false, message: "Fecha inválida" };
-  
+  if (Number.isNaN(birth.getTime()))
+    return { valid: false, message: "Fecha inválida" };
+
   const now = new Date();
-  
+
   // No antes de 1930
   if (birth.getFullYear() < 1930) {
     return { valid: false, message: "La fecha no puede ser anterior a 1930" };
   }
-  
+
   // No fechas futuras
   if (birth > now) {
     return { valid: false, message: "La fecha no puede ser futura" };
   }
-  
+
   // Calcular edad
   let age = now.getFullYear() - birth.getFullYear();
   const monthDiff = now.getMonth() - birth.getMonth();
   if (monthDiff < 0 || (monthDiff === 0 && now.getDate() < birth.getDate())) {
     age--;
   }
-  
+
   // Al menos 6 meses
   const sixMonthsAgo = new Date(
     now.getFullYear(),
@@ -97,12 +103,16 @@ function validateBirthDate(isoDate: string): { valid: boolean; message?: string;
   if (birth > sixMonthsAgo) {
     return { valid: false, message: "Debe tener al menos 6 meses de edad" };
   }
-  
+
   // Es menor de edad
   if (age < 18) {
-    return { valid: true, message: "Fecha válida - Paciente menor de edad", isMinor: true };
+    return {
+      valid: true,
+      message: "Fecha válida - Paciente menor de edad",
+      isMinor: true,
+    };
   }
-  
+
   return { valid: true, message: "Fecha válida", isMinor: false };
 }
 function fullNameTwoWords(name: string): boolean {
@@ -226,6 +236,7 @@ export default function PacientesNuevo() {
   const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
   const [loading, setLoading] = useState(false);
   const [errorTop, setErrorTop] = useState("");
+  const { subirFoto } = useFotoPerfil();
 
   // Toast de éxito
   const [showSuccess, setShowSuccess] = useState(false);
@@ -607,7 +618,7 @@ export default function PacientesNuevo() {
       setBirthDateValid(validation.valid);
       setBirthDateMsg(validation.message || null);
       setIsMinor(validation.isMinor || false);
-      
+
       // Limpiar errores si es válida
       if (validation.valid) {
         setErrors((prev) => ({ ...prev, fecha_nacimiento: "" }));
@@ -646,14 +657,15 @@ export default function PacientesNuevo() {
     if (!isMinor) {
       // Mayor de edad: email y celular obligatorios
       if (!/^09\d{8}$/.test(personal.celular))
-        newErrors.celular = "El celular debe iniciar con 09 y tener 10 dígitos.";
-      if (!isValidEmail(personal.email)) 
-        newErrors.email = "Correo inválido.";
+        newErrors.celular =
+          "El celular debe iniciar con 09 y tener 10 dígitos.";
+      if (!isValidEmail(personal.email)) newErrors.email = "Correo inválido.";
     } else {
       // Menor de edad: validar solo si se proporcionaron
       if (personal.celular && !/^09\d{8}$/.test(personal.celular))
-        newErrors.celular = "El celular debe iniciar con 09 y tener 10 dígitos.";
-      if (personal.email && !isValidEmail(personal.email)) 
+        newErrors.celular =
+          "El celular debe iniciar con 09 y tener 10 dígitos.";
+      if (personal.email && !isValidEmail(personal.email))
         newErrors.email = "Correo inválido.";
     }
 
@@ -704,19 +716,20 @@ export default function PacientesNuevo() {
     if (!/^09\d{8}$/.test(emergencia.contacto_emergencia_cel))
       newErrors.contacto_emergencia_cel =
         "El celular debe iniciar con 09 y tener 10 dígitos.";
-    
+
     // Email de emergencia: obligatorio solo para menores
     if (isMinor) {
       const emailEmerg = emergencia.contacto_emergencia_email.trim();
       if (!emailEmerg || !isValidEmail(emailEmerg))
-        newErrors.contacto_emergencia_email = "Correo obligatorio para menores.";
+        newErrors.contacto_emergencia_email =
+          "Correo obligatorio para menores.";
     } else {
       // Mayor: validar solo si se proporcionó
       const emailEmerg = emergencia.contacto_emergencia_email.trim();
       if (emailEmerg && !isValidEmail(emailEmerg))
         newErrors.contacto_emergencia_email = "Correo inválido.";
     }
-    
+
     if (!emergencia.parSelect) {
       newErrors.contacto_emergencia_nom =
         newErrors.contacto_emergencia_nom || "";
@@ -780,33 +793,36 @@ export default function PacientesNuevo() {
         tipo_sangre: clinico.tipo_sangre,
       }).forEach(([k, v]) => {
         // Solo agregar campos no vacíos (excepto password que ya se maneja aparte)
-        if (k === 'celular' || k === 'email') {
+        if (k === "celular" || k === "email") {
           // Si celular o email están vacíos, no los agregar al FormData
           // Esto hará que el backend los trate como null
           if (v && String(v).trim()) {
             fd.append(k, String(v));
           }
-        } else if (k !== 'password') {
+        } else if (k !== "password") {
           fd.append(k, String(v));
         }
       });
       fd.delete("password2");
-      fd.append("activo", "true"); // importante: activar usuario
+      fd.append("activo", "true");
       fd.append("password", personal.password);
-      if (foto) fd.append("foto", foto);
 
       const userRes = await api.post(`/usuarios/`, fd, {
         headers: { "Content-Type": "multipart/form-data" },
       });
       const id_usuario = userRes.data.id_usuario;
-
+      
+      if (foto) {
+        await subirFoto(id_usuario, foto);
+      }
       // 2) Crear Paciente
       const pacRes = await api.post(`/pacientes/`, {
         id_usuario,
         contacto_emergencia_nom: emergencia.contacto_emergencia_nom,
         contacto_emergencia_cel: emergencia.contacto_emergencia_cel,
         // Solo enviar email si tiene valor
-        contacto_emergencia_email: emergencia.contacto_emergencia_email.trim() || null,
+        contacto_emergencia_email:
+          emergencia.contacto_emergencia_email.trim() || null,
         contacto_emergencia_par: emergencia.parSelect,
       });
       const id_paciente = pacRes.data.id_paciente ?? pacRes.data.id;
@@ -890,7 +906,8 @@ export default function PacientesNuevo() {
                 value={String(opt.id_antecedente)}
                 disabled={estaSeleccionado}
               >
-                {opt.nombre}{estaSeleccionado ? " (ya seleccionado)" : ""}
+                {opt.nombre}
+                {estaSeleccionado ? " (ya seleccionado)" : ""}
               </option>
             );
           })}
@@ -1181,7 +1198,12 @@ export default function PacientesNuevo() {
 
               <div>
                 <label className="block text-sm font-medium text-gray-700">
-                  Celular {isMinor && <span className="text-gray-500 font-normal">(Si el paciente es menor de edad, puede dejar en blanco)</span>}
+                  Celular{" "}
+                  {isMinor && (
+                    <span className="text-gray-500 font-normal">
+                      (Si el paciente es menor de edad, puede dejar en blanco)
+                    </span>
+                  )}
                 </label>
                 <input
                   name="celular"
@@ -1214,7 +1236,12 @@ export default function PacientesNuevo() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700">
-                  Correo {isMinor && <span className="text-gray-500 font-normal">(Si el paciente es menor de edad, puede dejar en blanco)</span>}
+                  Correo{" "}
+                  {isMinor && (
+                    <span className="text-gray-500 font-normal">
+                      (Si el paciente es menor de edad, puede dejar en blanco)
+                    </span>
+                  )}
                 </label>
                 <input
                   type="email"
@@ -1259,9 +1286,11 @@ export default function PacientesNuevo() {
                   required
                 />
                 {birthDateMsg && (
-                  <p className={`mt-1 text-sm ${
-                    birthDateValid ? "text-green-600" : "text-red-600"
-                  }`}>
+                  <p
+                    className={`mt-1 text-sm ${
+                      birthDateValid ? "text-green-600" : "text-red-600"
+                    }`}
+                  >
                     {birthDateMsg}
                   </p>
                 )}
@@ -1571,7 +1600,11 @@ export default function PacientesNuevo() {
 
               <button
                 type="button"
-                disabled={loadingAnt || propias.some((p) => !p.sel) || propias.length >= MAX_PROP}
+                disabled={
+                  loadingAnt ||
+                  propias.some((p) => !p.sel) ||
+                  propias.length >= MAX_PROP
+                }
                 onClick={() => {
                   if (propias.some((p) => !p.sel)) {
                     setErrorPropias(
@@ -1679,7 +1712,11 @@ export default function PacientesNuevo() {
 
               <button
                 type="button"
-                disabled={loadingAnt || familiares.some((f) => !f.sel) || familiares.length >= MAX_FAM}
+                disabled={
+                  loadingAnt ||
+                  familiares.some((f) => !f.sel) ||
+                  familiares.length >= MAX_FAM
+                }
                 onClick={() => {
                   if (familiares.some((f) => !f.sel)) {
                     setErrorFamiliares(
@@ -1781,16 +1818,23 @@ export default function PacientesNuevo() {
                   value={emergencia.contacto_emergencia_cel}
                   onChange={(e) => {
                     const val = e.target.value.replace(/\D/g, "").slice(0, 10);
-                    setEmergencia((prev) => ({ ...prev, contacto_emergencia_cel: val }));
-                    
+                    setEmergencia((prev) => ({
+                      ...prev,
+                      contacto_emergencia_cel: val,
+                    }));
+
                     // Validación en vivo de formato
                     if (val && !/^09\d{8}$/.test(val)) {
                       setErrors((prev) => ({
                         ...prev,
-                        contacto_emergencia_cel: "Debe iniciar con 09 y tener 10 dígitos."
+                        contacto_emergencia_cel:
+                          "Debe iniciar con 09 y tener 10 dígitos.",
                       }));
                     } else {
-                      setErrors((prev) => ({ ...prev, contacto_emergencia_cel: "" }));
+                      setErrors((prev) => ({
+                        ...prev,
+                        contacto_emergencia_cel: "",
+                      }));
                     }
                     setErrorTop("");
                   }}
@@ -1805,19 +1849,23 @@ export default function PacientesNuevo() {
                     {errors.contacto_emergencia_cel}
                   </p>
                 )}
-                {emergencia.contacto_emergencia_cel && 
-                 /^09\d{8}$/.test(emergencia.contacto_emergencia_cel) && 
-                 !errors.contacto_emergencia_cel && (
-                  <p className="mt-1 text-xs text-green-600">
-                    Formato válido
-                  </p>
-                )}
+                {emergencia.contacto_emergencia_cel &&
+                  /^09\d{8}$/.test(emergencia.contacto_emergencia_cel) &&
+                  !errors.contacto_emergencia_cel && (
+                    <p className="mt-1 text-xs text-green-600">
+                      Formato válido
+                    </p>
+                  )}
               </div>
 
               <div>
                 <label className="block text-sm font-medium text-gray-700">
                   Correo emergencia{isMinor && " *"}
-                  {!isMinor && <span className="text-xs text-gray-500 ml-1">(opcional)</span>}
+                  {!isMinor && (
+                    <span className="text-xs text-gray-500 ml-1">
+                      (opcional)
+                    </span>
+                  )}
                 </label>
                 <input
                   type="email"
@@ -1825,20 +1873,30 @@ export default function PacientesNuevo() {
                   value={emergencia.contacto_emergencia_email}
                   onChange={(e) => {
                     const val = e.target.value;
-                    setEmergencia((prev) => ({ ...prev, contacto_emergencia_email: val }));
-                    
+                    setEmergencia((prev) => ({
+                      ...prev,
+                      contacto_emergencia_email: val,
+                    }));
+
                     // Validación en vivo de formato
                     if (val.trim()) {
                       if (!isValidEmail(val)) {
                         setErrors((prev) => ({
                           ...prev,
-                          contacto_emergencia_email: "Formato de correo inválido."
+                          contacto_emergencia_email:
+                            "Formato de correo inválido.",
                         }));
                       } else {
-                        setErrors((prev) => ({ ...prev, contacto_emergencia_email: "" }));
+                        setErrors((prev) => ({
+                          ...prev,
+                          contacto_emergencia_email: "",
+                        }));
                       }
                     } else {
-                      setErrors((prev) => ({ ...prev, contacto_emergencia_email: "" }));
+                      setErrors((prev) => ({
+                        ...prev,
+                        contacto_emergencia_email: "",
+                      }));
                     }
                     setErrorTop("");
                   }}
@@ -1851,13 +1909,13 @@ export default function PacientesNuevo() {
                     {errors.contacto_emergencia_email}
                   </p>
                 )}
-                {emergencia.contacto_emergencia_email && 
-                 isValidEmail(emergencia.contacto_emergencia_email) && 
-                 !errors.contacto_emergencia_email && (
-                  <p className="mt-1 text-xs text-green-600">
-                    Formato válido
-                  </p>
-                )}
+                {emergencia.contacto_emergencia_email &&
+                  isValidEmail(emergencia.contacto_emergencia_email) &&
+                  !errors.contacto_emergencia_email && (
+                    <p className="mt-1 text-xs text-green-600">
+                      Formato válido
+                    </p>
+                  )}
               </div>
 
               <div>

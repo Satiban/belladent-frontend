@@ -6,6 +6,7 @@ import { publicApi } from "../api/publicApi";
 import { Eye, EyeOff, User } from "lucide-react";
 import logoUrl from "../assets/belladent-logo5.png";
 import heroImg from "../assets/diente-login.png";
+import { useFotoPerfil } from "../hooks/useFotoPerfil";
 
 const PRIMARY = "#0070B7";
 
@@ -132,6 +133,7 @@ export default function RegistroPaciente() {
   const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
   const [loading, setLoading] = useState(false);
   const [errorTop, setErrorTop] = useState("");
+  const { subirFoto } = useFotoPerfil();
 
   const [antecedentes, setAntecedentes] = useState<AntecedenteOpt[]>([]);
   const [loadingAnt, setLoadingAnt] = useState<boolean>(true);
@@ -645,7 +647,6 @@ export default function RegistroPaciente() {
       }).forEach(([k, v]) => fd.append(k, String(v)));
       fd.delete("password2");
       fd.append("activo", "true");
-      if (foto) fd.append("foto", foto);
 
       const userRes = await publicApi.post(`/usuarios/`, fd);
       const id_usuario = userRes.data.id_usuario;
@@ -662,6 +663,11 @@ export default function RegistroPaciente() {
       sessionStorage.setItem("accessToken", access);
       sessionStorage.setItem("refreshToken", refresh);
       localStorage.setItem("tokenStore", "session");
+
+      // === SUBIR FOTO (si eligió una) - DESPUÉS del login ===
+      if (foto) {
+        await subirFoto(id_usuario, foto);
+      }
 
       // 3) Crear Paciente (protegido) con `api`
       const pacRes = await api.post(`/pacientes/`, {
@@ -814,13 +820,13 @@ export default function RegistroPaciente() {
       {/* LOGO FIJO GLOBAL */}
       <div
         className="absolute left-0 top-0 w-full flex justify-center lg:left-8 lg:top-4 lg:w-auto lg:justify-start z-50"
-        style={{ paddingTop: '0.75rem' }}
+        style={{ paddingTop: "0.75rem" }}
       >
         <img
           src={logoUrl}
           alt="BellaDent"
           className="h-20 w-auto max-w-[70vw] sm:h-24 sm:max-w-xs lg:h-28 lg:max-w-md"
-          style={{ marginTop: 0, paddingBottom: '1rem' }}
+          style={{ marginTop: 0, paddingBottom: "1rem" }}
         />
       </div>
 
@@ -839,7 +845,6 @@ export default function RegistroPaciente() {
 
         {/* Columna izquierda */}
         <div className="relative px-8 py-10 flex items-start justify-center">
-
           <div className="w-full max-w-xl mt-24">
             {/* Stepper */}
             <div className="mb-6 flex items-center justify-center gap-6">
@@ -936,7 +941,8 @@ export default function RegistroPaciente() {
                     </div>
 
                     <p className="text-xs text-gray-500 mt-2 text-center">
-                      Formatos: JPG/PNG. Recomendado: imagen cuadrada para mejor encuadre.
+                      Formatos: JPG/PNG. Recomendado: imagen cuadrada para mejor
+                      encuadre.
                     </p>
                   </div>
 

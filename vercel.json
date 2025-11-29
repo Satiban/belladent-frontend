@@ -7,10 +7,6 @@
       "source": "/(.*)",
       "headers": [
         {
-          "key": "X-Frame-Options",
-          "value": "DENY"
-        },
-        {
           "key": "Access-Control-Allow-Origin",
           "value": "https://belladent.vercel.app"
         },

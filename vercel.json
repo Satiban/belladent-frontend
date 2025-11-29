@@ -8,7 +8,7 @@
       "headers": [
         {
           "key": "Access-Control-Allow-Origin",
-          "value": "https://belladent.vercel.app"
+          "value": "https://belladent-backend.onrender.com"
         }
       ]
     }

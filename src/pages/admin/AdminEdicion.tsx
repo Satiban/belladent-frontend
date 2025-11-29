@@ -4,6 +4,7 @@ import { Eye, EyeOff, Loader2, Pencil, UserPlus } from "lucide-react";
 import { useNavigate, useParams } from "react-router-dom";
 import { api } from "../../api/axios";
 import { e164ToLocal, localToE164 } from "../../utils/phoneFormat";
+import { useFotoPerfil } from "../../hooks/useFotoPerfil";
 
 type FormState = {
   primer_nombre: string;
@@ -89,6 +90,10 @@ function useDebouncedCallback(cb: () => void, delay = 400) {
 export default function AdminEdicion() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { subirFoto, eliminarFoto } = useFotoPerfil();
+
+  const [fotoOriginal, setFotoOriginal] = useState<string | null>(null);
+  const [debeEliminarFoto, setDebeEliminarFoto] = useState(false);
 
   const [form, setForm] = useState<FormState>({
     primer_nombre: "",
@@ -141,7 +146,9 @@ export default function AdminEdicion() {
   }>({});
 
   // Estado para verificar si tiene datos de paciente
-  const [tieneDatosPaciente, setTieneDatosPaciente] = useState<boolean | null>(null);
+  const [tieneDatosPaciente, setTieneDatosPaciente] = useState<boolean | null>(
+    null
+  );
   const [checkingPaciente, setCheckingPaciente] = useState(false);
 
   // Modal de confirmación de cambio de is_staff
@@ -157,10 +164,10 @@ export default function AdminEdicion() {
       try {
         const { data } = await api.get(`/usuarios/${id}/`);
         const emailFetched = data.usuario_email ?? data.email ?? "";
-        
+
         // Convertir celular de E.164 a formato local para mostrar
         const celularLocal = e164ToLocal(data.celular);
-        
+
         setForm((prev) => ({
           ...prev,
           primer_nombre: data.primer_nombre ?? "",
@@ -182,12 +189,16 @@ export default function AdminEdicion() {
         setOrigStaff(Boolean(data.is_staff)); // NUEVO: guardar is_staff original
         if (data?.foto && typeof data.foto === "string") {
           setPreviewUrl(data.foto);
+          setFotoOriginal(data.foto);
+          setDebeEliminarFoto(false);
         }
 
         // Verificar si tiene datos de paciente
         setCheckingPaciente(true);
         try {
-          const verifyRes = await api.get(`/usuarios/${id}/verificar-rol-paciente/`);
+          const verifyRes = await api.get(
+            `/usuarios/${id}/verificar-rol-paciente/`
+          );
           setTieneDatosPaciente(verifyRes.data?.existe === true);
         } catch (err) {
           console.error("Error al verificar rol paciente:", err);
@@ -522,14 +533,17 @@ export default function AdminEdicion() {
 
     // NUEVO: Detectar cambio en is_staff
     const cambioStaff = form.staff !== origStaff;
-    
+
     if (cambioStaff) {
       // Previsualizar el cambio
       try {
-        const { data } = await api.post(`/usuarios/${id}/previsualizar-cambio-staff/`, {
-          nuevo_is_staff: form.staff,
-        });
-        
+        const { data } = await api.post(
+          `/usuarios/${id}/previsualizar-cambio-staff/`,
+          {
+            nuevo_is_staff: form.staff,
+          }
+        );
+
         if (data.permitido) {
           // Mostrar modal de confirmación
           setMensajeModal(data.mensaje || "¿Confirmar cambio de permisos?");
@@ -538,9 +552,10 @@ export default function AdminEdicion() {
           return; // No continuar con el guardado aún
         }
       } catch (err: any) {
-        const detail = err?.response?.data?.detail || 
-                      err?.response?.data?.motivo ||
-                      "Error al verificar el cambio de permisos.";
+        const detail =
+          err?.response?.data?.detail ||
+          err?.response?.data?.motivo ||
+          "Error al verificar el cambio de permisos.";
         setError(detail);
         return;
       }
@@ -557,55 +572,44 @@ export default function AdminEdicion() {
     try {
       setSaving(true);
 
-      const hasPhoto = !!form.foto;
-      if (hasPhoto) {
-        const fd = new FormData();
-        fd.append("primer_nombre", form.primer_nombre);
-        fd.append("segundo_nombre", form.segundo_nombre);
-        fd.append("primer_apellido", form.primer_apellido);
-        fd.append("segundo_apellido", form.segundo_apellido);
-        fd.append("cedula", form.cedula);
-        fd.append("sexo", form.sexo);
-        fd.append("fecha_nacimiento", form.fecha_nacimiento);
-        fd.append("tipo_sangre", form.tipo_sangre);
-        
-        // Convertir celular a E.164 antes de enviar
-        const celularE164 = localToE164(form.celular);
-        fd.append("celular", celularE164);
-        
-        fd.append("email", form.email);
-        fd.append("activo", form.activa ? "true" : "false");
-        fd.append("is_staff", form.staff ? "true" : "false");
-        if (form.nueva_password) fd.append("password", form.nueva_password);
-        if (form.foto) fd.append("foto", form.foto);
+      // ------------------------------
+      // 1) Enviar datos (SIN foto)
+      // ------------------------------
+      const payload: any = {
+        primer_nombre: form.primer_nombre,
+        segundo_nombre: form.segundo_nombre,
+        primer_apellido: form.primer_apellido,
+        segundo_apellido: form.segundo_apellido,
+        cedula: form.cedula,
+        sexo: form.sexo,
+        fecha_nacimiento: form.fecha_nacimiento,
+        tipo_sangre: form.tipo_sangre,
+        celular: localToE164(form.celular),
+        email: form.email,
+        activo: form.activa,
+        is_staff: form.staff,
+      };
 
-        await api.patch(`/usuarios/${id}/`, fd, {
-          headers: { "Content-Type": "multipart/form-data" },
-        });
-      } else {
-        const payload: any = {
-          primer_nombre: form.primer_nombre,
-          segundo_nombre: form.segundo_nombre,
-          primer_apellido: form.primer_apellido,
-          segundo_apellido: form.segundo_apellido,
-          cedula: form.cedula,
-          sexo: form.sexo,
-          fecha_nacimiento: form.fecha_nacimiento,
-          tipo_sangre: form.tipo_sangre,
-          celular: localToE164(form.celular),
-          email: form.email,
-          activo: form.activa,
-          is_staff: form.staff,
-        };
-        if (form.nueva_password) payload.password = form.nueva_password;
+      if (form.nueva_password) payload.password = form.nueva_password;
 
-        await api.patch(`/usuarios/${id}/`, payload);
+      await api.patch(`/usuarios/${id}/`, payload);
+
+      // ------------------------------
+      // 2) Manejo de foto
+      // ------------------------------
+
+      // Caso A: usuario subió una nueva foto
+      if (form.foto) {
+        await subirFoto(Number(id), form.foto);
+      }
+      // Caso B: el usuario marcó explícitamente que quiere eliminar la foto
+      else if (debeEliminarFoto) {
+        await eliminarFoto(Number(id));
       }
 
-      // Mostrar toast de éxito
+      // Mostrar toast y redirigir
       setShowSuccess(true);
-      
-      // Redirigir después de mostrar el toast
+
       setTimeout(() => {
         navigate(`/admin/usuarios/${id}`);
       }, 1000);
@@ -618,6 +622,7 @@ export default function AdminEdicion() {
         err?.response?.data?.celular?.[0] ||
         err?.response?.data?.is_staff?.[0] ||
         "No se pudo guardar los cambios.";
+
       setError(typeof detail === "string" ? detail : JSON.stringify(detail));
     } finally {
       setSaving(false);
@@ -685,7 +690,9 @@ export default function AdminEdicion() {
           {tieneDatosPaciente === false && (
             <button
               type="button"
-              onClick={() => navigate(`/admin/usuarios/${id}/agregar-datos-paciente`)}
+              onClick={() =>
+                navigate(`/admin/usuarios/${id}/agregar-datos-paciente`)
+              }
               className="inline-flex items-center gap-2 rounded-lg bg-blue-600 text-white px-4 py-2 shadow hover:bg-blue-700"
               title="Agregar datos de paciente"
             >
@@ -724,6 +731,7 @@ export default function AdminEdicion() {
               {/* Foto (grande con selector debajo) */}
               <div className="md:col-span-1">
                 <div className="flex flex-col items-center gap-4">
+                  {/* Vista previa circular */}
                   <div className="w-40 h-40 rounded-full bg-gray-200 overflow-hidden ring-2 ring-gray-200">
                     {previewUrl ? (
                       <img
@@ -738,29 +746,65 @@ export default function AdminEdicion() {
                     )}
                   </div>
 
+                  {/* Selector + botones */}
                   <div className="w-full">
                     <input
                       type="file"
                       name="foto"
                       accept="image/*"
-                      onChange={onChange}
+                      onChange={(e) => {
+                        const file = e.target.files?.[0] ?? null;
+                        setForm((f) => ({ ...f, foto: file }));
+
+                        // Si selecciona nueva foto → generar preview
+                        setPreviewUrl(
+                          file ? URL.createObjectURL(file) : fotoOriginal
+                        );
+                      }}
                       className="block w-full text-sm rounded-lg border px-3 py-2 file:mr-4 file:rounded-md file:border-0 file:px-3 file:py-1.5 file:bg-gray-800 file:text-white hover:file:bg-black/80"
                       aria-label="Seleccionar foto de perfil"
                     />
-                    {form.foto && (
-                      <div className="mt-2 flex justify-center">
+
+                    {/* BOTONES DE ACCIONES */}
+                    <div className="mt-3 flex flex-col items-center gap-2">
+                      {/* Botón: Quitar selección (foto NUEVA) */}
+                      {form.foto && (
                         <button
                           type="button"
                           onClick={() => {
                             setForm((f) => ({ ...f, foto: null }));
-                            setPreviewUrl(null);
+                            setPreviewUrl(fotoOriginal); // volver a la original
+                            setDebeEliminarFoto(false); // NUEVO → cancelar intención de eliminar
                           }}
                           className="rounded-lg border px-3 py-1.5 text-sm hover:bg-gray-50"
                         >
                           Quitar selección
                         </button>
-                      </div>
-                    )}
+                      )}
+
+                      {/* Botón: Quitar foto actual (Cloudinary) */}
+                      {fotoOriginal && !form.foto && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setDebeEliminarFoto(true); // NUEVO → marcar intención real de eliminar
+                            setFotoOriginal(null);
+                            setPreviewUrl(null);
+                          }}
+                          className="rounded-lg border px-3 py-1.5 text-sm hover:bg-gray-50"
+                        >
+                          Quitar foto actual
+                        </button>
+                      )}
+
+                      {/* Mensaje cuando está marcada para eliminar */}
+                      {!fotoOriginal && !form.foto && previewUrl === null && (
+                        <span className="text-xs text-red-600 text-center">
+                          Foto marcada para eliminar
+                        </span>
+                      )}
+                    </div>
+
                     <p className="text-xs text-gray-500 text-center mt-2">
                       JPG/PNG. Máx. 5MB.
                     </p>
@@ -1020,7 +1064,9 @@ export default function AdminEdicion() {
 
                 {/* Error del submit solo si sigue inválida */}
                 {errors.nueva_password && pwdTouched && !pwdStrong && (
-                  <p className="text-xs text-red-600 mt-1">{errors.nueva_password}</p>
+                  <p className="text-xs text-red-600 mt-1">
+                    {errors.nueva_password}
+                  </p>
                 )}
               </Field>
 
@@ -1095,10 +1141,10 @@ export default function AdminEdicion() {
             <h3 className="text-lg font-semibold mb-3 text-gray-900">
               Confirmación de cambio de permisos
             </h3>
-            
+
             <div className="space-y-3 mb-4">
               <p className="text-sm text-gray-700">{mensajeModal}</p>
-              
+
               {cambioRolModal && (
                 <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
                   <p className="text-xs font-medium text-blue-900">
@@ -1109,7 +1155,7 @@ export default function AdminEdicion() {
                   </p>
                 </div>
               )}
-              
+
               <p className="text-xs text-gray-500">
                 Este cambio afectará los permisos del usuario en el sistema.
               </p>

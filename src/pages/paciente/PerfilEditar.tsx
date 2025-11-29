@@ -5,6 +5,7 @@ import { useAuth } from "../../context/AuthContext";
 import { api } from "../../api/axios";
 import { Info, Eye, EyeOff } from "lucide-react";
 import { e164ToLocal, localToE164 } from "../../utils/phoneFormat";
+import { useFotoPerfil } from "../../hooks/useFotoPerfil";
 
 /* =========================
    Tipos mínimos
@@ -90,6 +91,7 @@ function ToastView({
 export default function PerfilEditar() {
   const navigate = useNavigate();
   const { usuario: usuarioCtx } = useAuth();
+  const { subirFoto, eliminarFoto } = useFotoPerfil();
 
   // Fallback por si el contexto aún no está poblado
   const usuarioStorage = useMemo(() => {
@@ -301,27 +303,52 @@ export default function PerfilEditar() {
       setSaving(true);
       setError(null);
 
-      // 1) PATCH usuario (solo foto + password) multipart
-      const fd = new FormData();
+      /* ======================
+       1) Cambiar contraseña
+       ====================== */
       const password = String(user.password || "").trim();
-      if (password) fd.append("password", password);
-
-      if (fotoFile) fd.append("foto", fotoFile);
-      if (fotoRemove && !fotoFile) fd.append("foto_remove", "true");
-
-      if (password || fotoFile || fotoRemove) {
-        const usrPatch = await api.patch(`/usuarios/${user.id_usuario}/`, fd, {
-          headers: { "Content-Type": "multipart/form-data" },
+      if (password) {
+        await api.patch(`/usuarios/${user.id_usuario}/`, {
+          password,
         });
-        const newUser = usrPatch.data as Usuario;
-        newUser.foto = absolutize(newUser.foto);
-        setUser({ ...newUser });
+
+        // Limpio del estado local por seguridad
+        setUser((u) =>
+          u
+            ? {
+                ...u,
+                password: "",
+                password_confirm: "",
+              }
+            : u
+        );
+      }
+
+      /* ======================
+       2) Foto de perfil (Cloudinary)
+       ====================== */
+      // Caso A: el usuario subió una NUEVA foto
+      if (fotoFile) {
+        const secureUrl = await subirFoto(user.id_usuario, fotoFile);
+        const abs = absolutize(secureUrl);
+
+        setUser((u) => (u ? { ...u, foto: abs } : u));
         setFotoFile(null);
         setFotoPreview(null);
         setFotoRemove(false);
       }
+      // Caso B: el usuario marcó "Quitar foto actual" y NO subió otra
+      else if (fotoRemove) {
+        await eliminarFoto(user.id_usuario);
 
-      // 2) PATCH paciente (contacto emergencia)
+        setUser((u) => (u ? { ...u, foto: null } : u));
+        setFotoRemove(false);
+        setFotoPreview(null);
+      }
+
+      /* ======================
+       3) Contacto de emergencia (Paciente)
+       ====================== */
       await api.patch(`/pacientes/${pac.id_paciente}/`, {
         contacto_emergencia_nom: pac.contacto_emergencia_nom ?? "",
         contacto_emergencia_cel: pac.contacto_emergencia_cel
@@ -330,7 +357,9 @@ export default function PerfilEditar() {
         contacto_emergencia_par: pac.contacto_emergencia_par ?? "",
       });
 
-      // Mostrar toast de éxito y redirigir después de un breve delay
+      /* ======================
+       4) Éxito → toast + redirect
+       ====================== */
       setShowSuccess(true);
       setTimeout(() => {
         navigate("/paciente/perfil");

@@ -97,7 +97,9 @@ export default function EditarPago() {
   const [metodoPago, setMetodoPago] = useState<MetodoPago>("efectivo");
   const [estadoPago, setEstadoPago] = useState<EstadoPago>("pendiente");
   const [comprobante, setComprobante] = useState<File | null>(null);
-  const [comprobanteOriginal, setComprobanteOriginal] = useState<string | null>(null);
+  const [comprobanteOriginal, setComprobanteOriginal] = useState<string | null>(
+    null
+  );
   const [comprobantePreview, setComprobantePreview] = useState<string | null>(
     null
   );
@@ -110,10 +112,7 @@ export default function EditarPago() {
 
   // Estado para errores de validación
   type Errors = Partial<
-    Record<
-      "monto" | "metodo_pago" | "comprobante" | "motivo_reembolso",
-      string
-    >
+    Record<"monto" | "metodo_pago" | "comprobante" | "motivo_reembolso", string>
   >;
   const [errors, setErrors] = useState<Errors>({});
 
@@ -144,23 +143,23 @@ export default function EditarPago() {
   /* ===== Handlers ===== */
   const handleMontoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     let value = e.target.value;
-    
+
     // Reemplazar coma por punto para normalizar
-    value = value.replace(',', '.');
-    
+    value = value.replace(",", ".");
+
     // Permitir solo números y un punto decimal
     if (!/^\d*\.?\d*$/.test(value)) {
       return; // No actualizar si tiene caracteres inválidos
     }
-    
+
     // Validar formato: máximo 8 dígitos enteros y 2 decimales
-    const parts = value.split('.');
-    
+    const parts = value.split(".");
+
     // Si hay más de un punto, no permitir
     if (parts.length > 2) {
       return;
     }
-    
+
     // Limitar parte entera a 8 dígitos
     if (parts[0] && parts[0].length > 8) {
       // Mostrar advertencia temporal
@@ -168,7 +167,7 @@ export default function EditarPago() {
       setTimeout(() => setMontoLimitWarning(false), 2000);
       return;
     }
-    
+
     // Limitar decimales a 2 dígitos
     if (parts[1] && parts[1].length > 2) {
       // Mostrar advertencia temporal
@@ -176,7 +175,7 @@ export default function EditarPago() {
       setTimeout(() => setMontoLimitWarning(false), 2000);
       return;
     }
-    
+
     // Actualizar el valor
     setMonto(value);
     setErrors((prev) => ({ ...prev, monto: "" }));
@@ -200,7 +199,7 @@ export default function EditarPago() {
   const handleMetodoPagoChange = (nuevoMetodo: MetodoPago) => {
     setMetodoPago(nuevoMetodo);
     setErrors((prev) => ({ ...prev, comprobante: "" }));
-    
+
     // Si cambia a efectivo, limpiar comprobante temporal pero mantener el original si existe
     if (nuevoMetodo === "efectivo") {
       setComprobante(null);
@@ -216,7 +215,7 @@ export default function EditarPago() {
 
   const handleEstadoPagoChange = (nuevoEstado: EstadoPago) => {
     setEstadoPago(nuevoEstado);
-    
+
     // Si cambia de "reembolsado" a otro estado, limpiar campos de reembolso
     if (estadoPago === "reembolsado" && nuevoEstado !== "reembolsado") {
       setMotivoReembolso("");
@@ -243,7 +242,8 @@ export default function EditarPago() {
     if (metodoPago === "transferencia") {
       // Si no hay archivo nuevo ni archivo original, es obligatorio
       if (!comprobante && !comprobanteOriginal) {
-        newErrors.comprobante = "El comprobante es obligatorio para transferencias.";
+        newErrors.comprobante =
+          "El comprobante es obligatorio para transferencias.";
       }
     }
 
@@ -260,7 +260,7 @@ export default function EditarPago() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     // Validar antes de enviar
     if (!validateBeforeSave()) {
       return;
@@ -268,73 +268,59 @@ export default function EditarPago() {
 
     setLoading(true);
     try {
-      // Caso especial: si el estado cambió a "reembolsado"
-      if (estadoPago === "reembolsado") {
-        await api.patch(`/pagos/${idPago}/reembolsar/`, {
+      // Verificar si estamos CAMBIANDO el estado a "reembolsado" (no si ya está reembolsado)
+      const estaCambiandoAReembolsado =
+        estadoPago === "reembolsado" &&
+        pago &&
+        pago.estado_pago !== "reembolsado";
+
+      if (estaCambiandoAReembolsado) {
+        // CASO 1: Cambiando de "pagado" a "reembolsado" por primera vez
+        const payload: any = {
           motivo_reembolso:
             motivoReembolso || "Reembolso autorizado por administración",
-        });
+        };
+
+        payload.observacion = observacion || "";
+
+        await api.patch(`/pagos/${idPago}/reembolsar/`, payload);
       } else {
-        // Verificar si necesitamos limpiar campos de reembolso
-        const necesitaLimpiarReembolso = pago && (pago.estado_pago as string) === "reembolsado";
-        
-        // Si necesitamos limpiar campos de reembolso, usar JSON en lugar de FormData
-        if (necesitaLimpiarReembolso) {
-          const payload: any = {
-            monto: monto,
-            metodo_pago: metodoPago,
-            estado_pago: estadoPago,
-            motivo_reembolso: null,
-            reembolsado_en: null,
-          };
-          
-          if (observacion) {
-            payload.observacion = observacion;
-          }
-          
-          // Para comprobante, si hay uno nuevo, necesitamos usar FormData
-          if (comprobante) {
-            const formData = new FormData();
-            formData.append("monto", monto);
-            formData.append("metodo_pago", metodoPago);
-            formData.append("estado_pago", estadoPago);
-            formData.append("motivo_reembolso", "");
-            formData.append("reembolsado_en", "");
-            if (observacion) formData.append("observacion", observacion);
-            formData.append("comprobante", comprobante);
-            
-            await api.patch(`/pagos/${idPago}/`, formData, {
-              headers: { "Content-Type": "multipart/form-data" },
-            });
-          } else {
-            // Sin archivo nuevo, enviar JSON
-            await api.patch(`/pagos/${idPago}/`, payload);
-          }
-        } else {
-          // Comportamiento normal (sin limpiar campos de reembolso)
-          const formData = new FormData();
-          formData.append("monto", monto);
-          formData.append("metodo_pago", metodoPago);
-          formData.append("estado_pago", estadoPago);
-          if (observacion) formData.append("observacion", observacion);
-          
-          // Manejo del comprobante según el método de pago
-          if (metodoPago === "transferencia") {
-            // Si hay un nuevo archivo seleccionado, enviarlo
-            if (comprobante) {
-              formData.append("comprobante", comprobante);
-            }
-            // Si no hay archivo nuevo pero sí había uno original, no hacer nada (mantener el original)
-            // El backend mantendrá el archivo existente
-          } else if (metodoPago === "efectivo") {
-            // Si cambió a efectivo, el backend automáticamente eliminará el comprobante
-            // No necesitamos enviar nada especial
-          }
-          
-          await api.patch(`/pagos/${idPago}/`, formData, {
-            headers: { "Content-Type": "multipart/form-data" },
-          });
+        // CASO 2: Actualización normal (ya sea pagado o ya reembolsado)
+        const formData = new FormData();
+        formData.append("monto", monto);
+        formData.append("metodo_pago", metodoPago);
+        formData.append("estado_pago", estadoPago);
+        formData.append("observacion", observacion || "");
+
+        // Si está volviendo de reembolsado a pagado, limpiar campos de reembolso
+        if (
+          pago &&
+          pago.estado_pago === "reembolsado" &&
+          estadoPago === "pagado"
+        ) {
+          formData.append("motivo_reembolso", "");
+          formData.append("reembolsado_en", "");
         }
+
+        // Si sigue reembolsado, mantener el motivo
+        if (estadoPago === "reembolsado" && motivoReembolso) {
+          formData.append("motivo_reembolso", motivoReembolso);
+        }
+
+        // Manejo del comprobante según el método de pago
+        if (metodoPago === "transferencia") {
+          // Si hay un nuevo archivo seleccionado, enviarlo
+          if (comprobante) {
+            formData.append("comprobante", comprobante);
+          }
+          // Si no hay archivo nuevo pero sí había uno original, no hacer nada (mantener el original)
+        } else if (metodoPago === "efectivo") {
+          // Si cambió a efectivo, el backend automáticamente eliminará el comprobante
+        }
+
+        await api.patch(`/pagos/${idPago}/`, formData, {
+          headers: { "Content-Type": "multipart/form-data" },
+        });
       }
 
       setShowSuccess(true);
@@ -365,7 +351,9 @@ export default function EditarPago() {
       {showSuccess && (
         <div className="fixed top-4 right-4 z-50 animate-in fade-in zoom-in duration-200">
           <div className="rounded-xl bg-green-600 text-white shadow-lg px-4 py-3">
-            <div className="font-semibold">¡Pago actualizado correctamente!</div>
+            <div className="font-semibold">
+              ¡Pago actualizado correctamente!
+            </div>
             <div className="text-sm text-white/90">Redirigiendo…</div>
           </div>
         </div>
@@ -377,7 +365,7 @@ export default function EditarPago() {
           <Banknote className="w-6 h-6" />
           Editar Pago
         </h1>
-        
+
         <div className="flex gap-2">
           <button
             type="button"
@@ -405,7 +393,12 @@ export default function EditarPago() {
             <div className="flex items-center gap-2">
               <Info className="w-5 h-5 text-gray-700" />
               <h2 className="font-semibold text-gray-800">Datos de la cita</h2>
-              <Pill estado={(pago.cita_info?.estado_cita?.toLowerCase() ?? "pendiente") as EstadoCita} />
+              <Pill
+                estado={
+                  (pago.cita_info?.estado_cita?.toLowerCase() ??
+                    "pendiente") as EstadoCita
+                }
+              />
             </div>
           </div>
 
@@ -426,9 +419,7 @@ export default function EditarPago() {
                 <Clock className="w-4 h-4" />
                 Hora
               </div>
-              <div className="font-medium">
-                {hhmm(pago.cita_info?.hora)}
-              </div>
+              <div className="font-medium">{hhmm(pago.cita_info?.hora)}</div>
             </div>
 
             {/* Paciente */}
@@ -454,7 +445,9 @@ export default function EditarPago() {
                 Odontólogo
               </div>
               <div className="font-medium">
-                {pago.cita_info?.odontologo_nombre ?? pago.odontologo_nombre ?? "—"}
+                {pago.cita_info?.odontologo_nombre ??
+                  pago.odontologo_nombre ??
+                  "—"}
               </div>
 
               {/* Especialidades del odontólogo */}
@@ -502,9 +495,10 @@ export default function EditarPago() {
                 </div>
                 {pago.reembolsado_en && (
                   <div className="text-xs text-amber-600 mt-1">
-                    Reembolsado el: {new Date(pago.reembolsado_en).toLocaleString("es-EC", {
+                    Reembolsado el:{" "}
+                    {new Date(pago.reembolsado_en).toLocaleString("es-EC", {
                       dateStyle: "medium",
-                      timeStyle: "short"
+                      timeStyle: "short",
                     })}
                   </div>
                 )}
@@ -556,14 +550,18 @@ export default function EditarPago() {
               </label>
               <select
                 value={metodoPago}
-                onChange={(e) => handleMetodoPagoChange(e.target.value as MetodoPago)}
+                onChange={(e) =>
+                  handleMetodoPagoChange(e.target.value as MetodoPago)
+                }
                 className={inputClass("metodo_pago")}
               >
                 <option value="efectivo">Efectivo</option>
                 <option value="transferencia">Transferencia</option>
               </select>
               {errors.metodo_pago && (
-                <p className="mt-1 text-xs text-red-600">{errors.metodo_pago}</p>
+                <p className="mt-1 text-xs text-red-600">
+                  {errors.metodo_pago}
+                </p>
               )}
             </div>
 
@@ -574,7 +572,9 @@ export default function EditarPago() {
               </label>
               <select
                 value={estadoPago}
-                onChange={(e) => handleEstadoPagoChange(e.target.value as EstadoPago)}
+                onChange={(e) =>
+                  handleEstadoPagoChange(e.target.value as EstadoPago)
+                }
                 className={inputClass()}
               >
                 <option value="pagado">Pagado</option>
@@ -603,28 +603,35 @@ export default function EditarPago() {
                 placeholder="Ej. Devolución por cancelación o error de cobro"
               />
               {errors.motivo_reembolso && (
-                <p className="mt-1 text-xs text-red-600">{errors.motivo_reembolso}</p>
+                <p className="mt-1 text-xs text-red-600">
+                  {errors.motivo_reembolso}
+                </p>
               )}
             </div>
           )}
 
           {/* Comprobante */}
           {metodoPago === "transferencia" && (
-            <div className={`rounded-lg border p-4 ${
-              errors.comprobante 
-                ? "bg-red-50 border-red-300" 
-                : "bg-gray-50 border-gray-200"
-            }`}>
+            <div
+              className={`rounded-lg border p-4 ${
+                errors.comprobante
+                  ? "bg-red-50 border-red-300"
+                  : "bg-gray-50 border-gray-200"
+              }`}
+            >
               <label className="block text-sm font-medium text-gray-700 mb-3">
-                Comprobante de transferencia <span className="text-red-500">*</span>
+                Comprobante de transferencia{" "}
+                <span className="text-red-500">*</span>
               </label>
 
               <div className="flex items-center gap-4 flex-wrap">
-                <div className={`w-32 h-32 rounded-lg overflow-hidden border grid place-items-center ${
-                  errors.comprobante 
-                    ? "border-red-500 bg-red-50" 
-                    : "border-gray-300 bg-white"
-                }`}>
+                <div
+                  className={`w-32 h-32 rounded-lg overflow-hidden border grid place-items-center ${
+                    errors.comprobante
+                      ? "border-red-500 bg-red-50"
+                      : "border-gray-300 bg-white"
+                  }`}
+                >
                   {comprobantePreview ? (
                     <img
                       src={comprobantePreview}
@@ -632,9 +639,11 @@ export default function EditarPago() {
                       className="w-full h-full object-cover"
                     />
                   ) : (
-                    <Upload className={`w-10 h-10 ${
-                      errors.comprobante ? "text-red-400" : "text-gray-400"
-                    }`} />
+                    <Upload
+                      className={`w-10 h-10 ${
+                        errors.comprobante ? "text-red-400" : "text-gray-400"
+                      }`}
+                    />
                   )}
                 </div>
 
@@ -665,7 +674,9 @@ export default function EditarPago() {
                     )}
                   </div>
                   {errors.comprobante && (
-                    <p className="text-xs text-red-600 font-medium">{errors.comprobante}</p>
+                    <p className="text-xs text-red-600 font-medium">
+                      {errors.comprobante}
+                    </p>
                   )}
                 </div>
               </div>

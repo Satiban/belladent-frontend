@@ -4,6 +4,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { api } from "../../api/axios";
 import { Eye, EyeOff, Loader2, Pencil, User } from "lucide-react";
 import { e164ToLocal, localToE164 } from "../../utils/phoneFormat";
+import { useFotoPerfil } from "../../hooks/useFotoPerfil";
 
 /* ===== Tipos ===== */
 type Odontologo = {
@@ -158,6 +159,12 @@ function splitNombreCompleto(full?: string | null) {
 /* ========= Helper URL de foto (evita /api/v1 en media) ========= */
 function absolutize(url?: string | null) {
   if (!url) return null;
+
+  // Si es nombre de archivo local como "7.JPG", no absolutizar
+  if (!url.includes("/") && !url.startsWith("http")) {
+    return null;
+  }
+
   try {
     new URL(url);
     return url;
@@ -207,6 +214,7 @@ export default function OdontologoEdicion() {
   const { id } = useParams();
   const odontologoId = useMemo(() => Number(id), [id]);
   const navigate = useNavigate();
+  const { subirFoto, eliminarFoto } = useFotoPerfil();
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -946,14 +954,14 @@ export default function OdontologoEdicion() {
           `/odontologos/${odo.id_odontologo}/preview-mantenimiento/`
         );
         const citasAfectadas = prev.data.items || [];
-        
+
         // Solo mostrar modal si HAY citas afectadas
         if (citasAfectadas.length > 0) {
           setPreviewCitas(citasAfectadas);
           setModalOpen(true);
           return; // detenemos el flujo hasta que confirme en modal
         }
-        
+
         // Si NO hay citas afectadas, continuar guardando sin mostrar modal
         // El flujo continúa abajo (no hacemos return)
       } catch (err) {
@@ -1015,7 +1023,6 @@ export default function OdontologoEdicion() {
       fd.append("usuario_email", form.usuario_email || "");
       fd.append("is_active", form.is_active ? "true" : "false");
       fd.append("activo", form.odontologo_activo ? "true" : "false");
-      fd.append("activo", form.odontologo_activo ? "true" : "false"); // NUEVO: permisos de odontólogo
 
       if (consultorioId !== "") {
         fd.append("consultorio_defecto_id", String(consultorioId));
@@ -1031,16 +1038,6 @@ export default function OdontologoEdicion() {
       );
       fd.append("horarios", JSON.stringify(horariosPayload));
 
-      // Foto nueva
-      if (fotoFile) {
-        fd.append("foto", fotoFile);
-      }
-
-      // Eliminar foto actual
-      if (fotoRemove && !fotoFile) {
-        fd.append("foto_remove", "true");
-      }
-
       const { data } = await api.patch(
         `/odontologos/${odo.id_odontologo}/`,
         fd,
@@ -1049,7 +1046,25 @@ export default function OdontologoEdicion() {
         }
       );
 
-      const updated: Odontologo = { ...data, foto: absolutize(data.foto) };
+      // CLOUDINARY ----------------------------------------
+
+      // SI subió foto nueva → subir a Cloudinary
+      if (fotoFile) {
+        await subirFoto(odo.id_usuario!, fotoFile);
+      }
+
+      // SI eliminó la foto → eliminar de Cloudinary
+      else if (fotoRemove && !fotoFile) {
+        await eliminarFoto(odo.id_usuario!);
+      }
+
+      // Recargar la foto REAL del usuario desde Cloudinary
+      const freshUser = await api.get(`/usuarios/${odo.id_usuario}/`);
+      const updated: Odontologo = {
+        ...data,
+        foto: absolutize(freshUser.data.foto),
+      };
+
       setOdo(updated);
 
       // Reset estados de foto
@@ -1169,12 +1184,18 @@ export default function OdontologoEdicion() {
         JSON.stringify(form.especialidades_detalle || [])
       );
       fd.append("horarios", JSON.stringify(horariosPayload));
-      if (fotoFile) fd.append("foto", fotoFile);
-      if (fotoRemove && !fotoFile) fd.append("foto_remove", "true");
 
       await api.patch(`/odontologos/${odo.id_odontologo}/`, fd, {
         headers: { "Content-Type": "multipart/form-data" },
       });
+
+      // Recargar usuario para obtener la foto real de Cloudinary
+      if (odo.id_usuario) {
+        const freshUser = await api.get(`/usuarios/${odo.id_usuario}/`);
+        setOdo((prev) =>
+          prev ? { ...prev, foto: absolutize(freshUser.data.foto) } : prev
+        );
+      }
 
       // CSV de citas afectadas
       const rows = previewCitasHorario.map(
@@ -1715,7 +1736,9 @@ export default function OdontologoEdicion() {
                     className="h-4 w-4 text-blue-600 focus:ring-blue-500 rounded"
                   />
                   <span className="text-sm">
-                    {form.is_active ? "Usuario activo (puede ingresar)" : "Usuario inactivo (sin acceso)"}
+                    {form.is_active
+                      ? "Usuario activo (puede ingresar)"
+                      : "Usuario inactivo (sin acceso)"}
                   </span>
                 </label>
               </div>
@@ -1731,18 +1754,23 @@ export default function OdontologoEdicion() {
                       type="checkbox"
                       checked={form.odontologo_activo}
                       onChange={(e) =>
-                        setForm((f) => ({ ...f, odontologo_activo: e.target.checked }))
+                        setForm((f) => ({
+                          ...f,
+                          odontologo_activo: e.target.checked,
+                        }))
                       }
                       disabled={!form.is_active}
                       className="h-4 w-4 text-green-600 focus:ring-green-500 rounded disabled:opacity-50"
                     />
                     <span className="text-sm">
-                      {form.odontologo_activo ? "Mantener como odontólogo" : "Solo paciente"}
+                      {form.odontologo_activo
+                        ? "Mantener como odontólogo"
+                        : "Solo paciente"}
                     </span>
                   </label>
                   <p className="mt-1 text-xs text-gray-500">
-                    {form.odontologo_activo 
-                      ? "Puede atender citas y acceder a vistas de odontólogo" 
+                    {form.odontologo_activo
+                      ? "Puede atender citas y acceder a vistas de odontólogo"
                       : "Sin acceso a funciones de odontólogo (solo es paciente)"}
                   </p>
                 </div>

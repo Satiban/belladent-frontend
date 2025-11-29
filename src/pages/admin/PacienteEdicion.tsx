@@ -4,6 +4,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { api } from "../../api/axios";
 import { e164ToLocal, localToE164 } from "../../utils/phoneFormat";
 import { Pencil, Eye, EyeOff, Loader2, Info } from "lucide-react";
+import { useFotoPerfil } from "../../hooks/useFotoPerfil";
 
 /* =========================
    Tipos
@@ -89,10 +90,14 @@ function isValidCedulaEC(ci: string): boolean {
   const digitoVerif = mod === 0 ? 0 : 10 - mod;
   return digitoVerif === parseInt(ci[9], 10);
 }
-function isValidEmail(email: string, permitirSistema: boolean = false): boolean {
+function isValidEmail(
+  email: string,
+  permitirSistema: boolean = false
+): boolean {
   if (!email) return false;
   // Rechazar emails del sistema SOLO si NO se permite (es decir, si es mayor de edad)
-  if (!permitirSistema && email.toLowerCase().includes('@oralflow.system')) return false;
+  if (!permitirSistema && email.toLowerCase().includes("@oralflow.system"))
+    return false;
   return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email);
 }
 function fullNameTwoWords(name: string): boolean {
@@ -107,6 +112,11 @@ function useDebouncedCallback(cb: () => void, delay = 400) {
 }
 function absolutize(url?: string | null) {
   if (!url) return null;
+
+  if (!url.includes("/") && !url.startsWith("http")) {
+    return null;
+  }
+
   try {
     new URL(url);
     return url;
@@ -121,6 +131,7 @@ function absolutize(url?: string | null) {
     return `${origin.replace(/\/$/, "")}/${String(url).replace(/^\//, "")}`;
   }
 }
+
 function normSexo(v?: string | null): "" | "M" | "F" {
   if (!v) return "";
   const s = String(v).trim().toUpperCase();
@@ -133,7 +144,7 @@ function normSexo(v?: string | null): "" | "M" | "F" {
 function getFechaMin6Meses(): string {
   const hoy = new Date();
   hoy.setMonth(hoy.getMonth() - 6);
-  return hoy.toISOString().split('T')[0];
+  return hoy.toISOString().split("T")[0];
 }
 
 // Mensaje dinámico según edad
@@ -253,7 +264,8 @@ function AddAntecedenteModal({
                 await onConfirmName(name);
               } catch (e: any) {
                 setErr(
-                  e?.message || "No se pudo crear el antecedente. Intenta de nuevo."
+                  e?.message ||
+                    "No se pudo crear el antecedente. Intenta de nuevo."
                 );
               }
             }}
@@ -283,18 +295,20 @@ export default function PacienteEdicion() {
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [showSuccess, setShowSuccess] = useState(false);
 
+  const { subirFoto, eliminarFoto } = useFotoPerfil();
+
   // Entidades
   const [pac, setPac] = useState<Paciente | null>(null);
   const [user, setUser] = useState<Usuario | null>(null);
-  
+
   // Estado para verificar si también es odontólogo
   const [esOdontologo, setEsOdontologo] = useState<boolean | null>(null);
   const [checkingOdontologo, setCheckingOdontologo] = useState(false);
-  
+
   // Estado para verificar si también es administrador
   const [esAdmin, setEsAdmin] = useState<boolean | null>(null);
   const [checkingAdmin, setCheckingAdmin] = useState(false);
-  
+
   // Estado para verificar si es menor de edad
   const [esMenor, setEsMenor] = useState<boolean>(false);
 
@@ -396,11 +410,16 @@ export default function PacienteEdicion() {
           tipo_sangre: (p as any).tipo_sangre ?? "",
           is_active: (p as any).is_active ?? true,
           activo: (p as any).is_active ?? true,
-          foto: absolutize((p as any).foto ?? null),
+          foto: absolutize((p as any).foto || (p as any).usuario_foto || null),
         };
 
         setUser(u);
-        
+
+        // Inicializar preview de foto con la foto existente
+        if (u.foto) {
+          setFotoPreview(u.foto);
+        }
+
         // Calcular si es menor de edad
         if (u.fecha_nacimiento) {
           const hoy = new Date();
@@ -421,7 +440,7 @@ export default function PacienteEdicion() {
           email: String(u.usuario_email || u.email || "").toLowerCase(),
           celular: String(u.celular || ""), // Ya está en formato local
         };
-        
+
         // Convertir celulares del contacto de emergencia a formato local
         p.contacto_emergencia_cel = e164ToLocal(p.contacto_emergencia_cel);
         // Normalizar parentesco a minúsculas (backend usa minúsculas: 'padres', 'hijos', etc.)
@@ -497,12 +516,14 @@ export default function PacienteEdicion() {
           setPropios([]);
           setFamiliares([]);
         }
-        
+
         // 5) Verificar si también es odontólogo
         if (u.id_usuario) {
           setCheckingOdontologo(true);
           try {
-            const verifyRes = await api.get(`/usuarios/${u.id_usuario}/verificar-rol-odontologo/`);
+            const verifyRes = await api.get(
+              `/usuarios/${u.id_usuario}/verificar-rol-odontologo/`
+            );
             setEsOdontologo(verifyRes.data?.existe === true);
           } catch (err) {
             console.error("Error al verificar rol odontólogo:", err);
@@ -511,7 +532,7 @@ export default function PacienteEdicion() {
             setCheckingOdontologo(false);
           }
         }
-        
+
         // 6) Verificar si también es administrador (is_staff=true)
         if (u.id_usuario) {
           setCheckingAdmin(true);
@@ -661,32 +682,33 @@ export default function PacienteEdicion() {
           nextPwd2 !== (user as any)?.password ? "No coincide." : "",
       }));
     }
-    
+
     // Recalcular edad si cambia fecha de nacimiento
     if (k === "fecha_nacimiento") {
       const fechaNac = String(v);
       if (fechaNac) {
         const fechaSeleccionada = new Date(fechaNac);
-        const fechaMin1930 = new Date('1930-01-01');
+        const fechaMin1930 = new Date("1930-01-01");
         const fechaMin6Meses = new Date(getFechaMin6Meses());
         const hoy = new Date();
-        
+
         // Validar rango
         if (fechaSeleccionada < fechaMin1930) {
           setErrors((prev) => ({
             ...prev,
-            fecha_nacimiento: "La fecha no puede ser anterior a 1930."
+            fecha_nacimiento: "La fecha no puede ser anterior a 1930.",
           }));
           return;
         }
         if (fechaSeleccionada > fechaMin6Meses) {
           setErrors((prev) => ({
             ...prev,
-            fecha_nacimiento: "El paciente debe tener al menos 6 meses de edad."
+            fecha_nacimiento:
+              "El paciente debe tener al menos 6 meses de edad.",
           }));
           return;
         }
-        
+
         // Calcular edad
         const nacimiento = new Date(fechaNac);
         let edad = hoy.getFullYear() - nacimiento.getFullYear();
@@ -694,11 +716,11 @@ export default function PacienteEdicion() {
         if (mes < 0 || (mes === 0 && hoy.getDate() < nacimiento.getDate())) {
           edad--;
         }
-        
+
         const erasMenor = esMenor;
         const ahoraMenor = edad < 18;
         setEsMenor(ahoraMenor);
-        
+
         // Mostrar toast si cambió de menor a mayor de edad
         if (erasMenor && !ahoraMenor) {
           pushToast(
@@ -885,8 +907,11 @@ export default function PacienteEdicion() {
     const m = String(user.usuario_email || user.email || "").trim();
     if (!m) return;
     // Solo rechazar email del sistema si es MAYOR de edad
-    if (!esMenor && m.toLowerCase().includes('@oralflow.system')) {
-      setErrors((p) => ({ ...p, usuario_email: "Los mayores de edad no pueden usar emails del sistema." }));
+    if (!esMenor && m.toLowerCase().includes("@oralflow.system")) {
+      setErrors((p) => ({
+        ...p,
+        usuario_email: "Los mayores de edad no pueden usar emails del sistema.",
+      }));
       setEmailExists(null);
       return;
     }
@@ -927,8 +952,11 @@ export default function PacienteEdicion() {
     if (!user) return;
     const m = String(user.usuario_email || user.email || "").trim();
     // Solo rechazar email del sistema si es MAYOR de edad
-    if (!esMenor && m.toLowerCase().includes('@oralflow.system')) {
-      setErrors((p) => ({ ...p, usuario_email: "Los mayores de edad no pueden usar emails del sistema." }));
+    if (!esMenor && m.toLowerCase().includes("@oralflow.system")) {
+      setErrors((p) => ({
+        ...p,
+        usuario_email: "Los mayores de edad no pueden usar emails del sistema.",
+      }));
       setEmailExists(null);
     } else if (isValidEmail(m, esMenor)) {
       lastQueried.current.email = m;
@@ -982,22 +1010,23 @@ export default function PacienteEdicion() {
     if (cedulaExists === true) newErrors.cedula = "Cédula inválida.";
 
     if (!user.sexo) newErrors.sexo = "Selecciona el sexo.";
-    
+
     // Validar fecha de nacimiento
     if (!user.fecha_nacimiento) {
       newErrors.fecha_nacimiento = "Obligatorio.";
     } else {
       const fechaSeleccionada = new Date(user.fecha_nacimiento);
-      const fechaMin1930 = new Date('1930-01-01');
+      const fechaMin1930 = new Date("1930-01-01");
       const fechaMin6Meses = new Date(getFechaMin6Meses());
-      
+
       if (fechaSeleccionada < fechaMin1930) {
         newErrors.fecha_nacimiento = "La fecha no puede ser anterior a 1930.";
       } else if (fechaSeleccionada > fechaMin6Meses) {
-        newErrors.fecha_nacimiento = "El paciente debe tener al menos 6 meses de edad.";
+        newErrors.fecha_nacimiento =
+          "El paciente debe tener al menos 6 meses de edad.";
       }
     }
-    
+
     if (!user.tipo_sangre)
       newErrors.tipo_sangre = "Selecciona el tipo de sangre.";
 
@@ -1008,7 +1037,7 @@ export default function PacienteEdicion() {
       if (celularPropio && !/^09\d{8}$/.test(celularPropio))
         newErrors.celular = "Formato 09xxxxxxxx.";
       if (celularExists === true) newErrors.celular = "Celular ya registrado.";
-      
+
       const emailPropio = String(user.usuario_email || user.email || "").trim();
       if (emailPropio && !isValidEmail(emailPropio, true))
         newErrors.usuario_email = "Correo inválido.";
@@ -1020,8 +1049,9 @@ export default function PacienteEdicion() {
       if (celularExists === true) newErrors.celular = "Celular ya registrado.";
 
       const m = String(user.usuario_email || user.email || "");
-      if (m.toLowerCase().includes('@oralflow.system'))
-        newErrors.usuario_email = "Los mayores de edad no pueden usar emails del sistema.";
+      if (m.toLowerCase().includes("@oralflow.system"))
+        newErrors.usuario_email =
+          "Los mayores de edad no pueden usar emails del sistema.";
       else if (!isValidEmail(m, false))
         newErrors.usuario_email = "Correo inválido.";
       if (emailExists === true) newErrors.usuario_email = "Correo inválido.";
@@ -1032,32 +1062,35 @@ export default function PacienteEdicion() {
     const ecel = String(pac.contacto_emergencia_cel || "").trim();
     const eemail = String(pac.contacto_emergencia_email || "").trim();
     const epar = String(pac.contacto_emergencia_par || "");
-    
+
     // Nombre contacto emergencia: SIEMPRE obligatorio
     if (!fullNameTwoWords(enom))
       newErrors.contacto_emergencia_nom = "Nombre y apellido.";
-    
+
     // Celular contacto emergencia: SIEMPRE obligatorio
     if (!/^09\d{8}$/.test(ecel))
       newErrors.contacto_emergencia_cel = "09xxxxxxxx.";
-    
+
     // Parentesco: SIEMPRE obligatorio
     if (!epar) newErrors.contacto_emergencia_par = "Selecciona parentesco.";
-    
+
     // Email contacto emergencia: OBLIGATORIO solo si es MENOR, opcional si es MAYOR
     // NUNCA puede ser @oralflow.system (debe ser email real de contacto)
     if (esMenor) {
       if (!eemail)
-        newErrors.contacto_emergencia_email = "Correo obligatorio para menores.";
-      else if (eemail.toLowerCase().includes('@oralflow.system'))
-        newErrors.contacto_emergencia_email = "El contacto de emergencia debe tener email real.";
+        newErrors.contacto_emergencia_email =
+          "Correo obligatorio para menores.";
+      else if (eemail.toLowerCase().includes("@oralflow.system"))
+        newErrors.contacto_emergencia_email =
+          "El contacto de emergencia debe tener email real.";
       else if (!isValidEmail(eemail, false))
         newErrors.contacto_emergencia_email = "Correo inválido.";
     } else {
       // Si es mayor y proporciona email, validar formato (pero no es obligatorio)
       if (eemail) {
-        if (eemail.toLowerCase().includes('@oralflow.system'))
-          newErrors.contacto_emergencia_email = "El contacto de emergencia debe tener email real.";
+        if (eemail.toLowerCase().includes("@oralflow.system"))
+          newErrors.contacto_emergencia_email =
+            "El contacto de emergencia debe tener email real.";
         else if (!isValidEmail(eemail, false))
           newErrors.contacto_emergencia_email = "Correo inválido.";
       }
@@ -1157,16 +1190,16 @@ export default function PacienteEdicion() {
       fd.append("sexo", String(user.sexo || ""));
       fd.append("fecha_nacimiento", String(user.fecha_nacimiento || ""));
       fd.append("tipo_sangre", String(user.tipo_sangre || ""));
-      
+
       // Convertir celular a E.164
       const celularOriginal = String(user.celular || "").trim();
       const celularE164 = localToE164(celularOriginal);
-      
+
       // Solo enviar si no está vacío (para mayor de edad es obligatorio, validado antes)
       if (celularE164) {
         fd.append("celular", celularE164);
       }
-      
+
       fd.append(
         "usuario_email",
         String(user.usuario_email || user.email || "")
@@ -1174,33 +1207,51 @@ export default function PacienteEdicion() {
       fd.append("activo", user.activo ? "true" : "false");
       if (password) fd.append("password", password);
 
-      // Foto nueva
-      if (fotoFile) fd.append("foto", fotoFile);
-      // Eliminar foto actual
-      if (fotoRemove && !fotoFile) fd.append("foto_remove", "true");
-
       const usrPatch = await api.patch(`/usuarios/${user.id_usuario}/`, fd, {
         headers: { "Content-Type": "multipart/form-data" },
       });
 
+      // =======================
+      // CLOUDINARY FOTO
+      // =======================
+
+      // Crear newUser primero
       const newUser = usrPatch.data as Usuario;
-      newUser.foto = absolutize(newUser.foto);
-      // Convertir celular de E.164 a formato local
+
+      // Si subió una foto nueva
+      if (fotoFile) {
+        await subirFoto(user.id_usuario, fotoFile);
+      } else if (fotoRemove && !fotoFile) {
+        await eliminarFoto(user.id_usuario);
+      }
+
+      // Siempre recargar usuario para obtener la URL real de Cloudinary
+      const freshUser = await api.get(`/usuarios/${user.id_usuario}/`);
+      newUser.foto = absolutize(
+        freshUser.data.foto || freshUser.data.usuario_foto || null
+      );
+
+      // Convertir celular a formato local
       newUser.celular = e164ToLocal(newUser.celular);
+
+      // Actualizar estado en React
       setUser({
         ...newUser,
         usuario_email: newUser.usuario_email ?? newUser.email ?? "",
         activo: newUser.activo ?? newUser.is_active ?? true,
         sexo: normSexo(newUser.sexo),
       });
-      // Reset foto states
+
+      // Limpiar estados de foto
       setFotoFile(null);
       setFotoPreview(null);
       setFotoRemove(false);
 
       // 2) PATCH paciente (contacto emergencia)
-      const celularEmergenciaE164 = localToE164(pac.contacto_emergencia_cel ?? "");
-      
+      const celularEmergenciaE164 = localToE164(
+        pac.contacto_emergencia_cel ?? ""
+      );
+
       const pacPatch = await api.patch(`/pacientes/${pac.id_paciente}/`, {
         contacto_emergencia_nom: pac.contacto_emergencia_nom ?? "",
         contacto_emergencia_cel: celularEmergenciaE164,
@@ -1209,10 +1260,13 @@ export default function PacienteEdicion() {
       });
       const newPac = pacPatch.data as Paciente;
       // Convertir celular de emergencia de E.164 a formato local para mostrar
-      newPac.contacto_emergencia_cel = e164ToLocal(newPac.contacto_emergencia_cel);
+      newPac.contacto_emergencia_cel = e164ToLocal(
+        newPac.contacto_emergencia_cel
+      );
       // Normalizar parentesco a minúsculas
       if (newPac.contacto_emergencia_par) {
-        newPac.contacto_emergencia_par = newPac.contacto_emergencia_par.toLowerCase();
+        newPac.contacto_emergencia_par =
+          newPac.contacto_emergencia_par.toLowerCase();
       }
       setPac(newPac);
 
@@ -1262,13 +1316,15 @@ export default function PacienteEdicion() {
       // Mapea errores 400 del backend a los campos
       const data = e?.response?.data;
       let errorMessage = "No se pudo guardar la edición. ";
-      
+
       if (data) {
         const next: Errors = {};
-        
+
         // Mapear todos los errores posibles del backend
         if (data.cedula) {
-          const msg = Array.isArray(data.cedula) ? data.cedula[0] : String(data.cedula);
+          const msg = Array.isArray(data.cedula)
+            ? data.cedula[0]
+            : String(data.cedula);
           next.cedula = msg;
           errorMessage += `Cédula: ${msg}. `;
         }
@@ -1279,45 +1335,47 @@ export default function PacienteEdicion() {
           errorMessage += `Email: ${msgStr}. `;
         }
         if (data.celular) {
-          const msg = Array.isArray(data.celular) ? data.celular[0] : String(data.celular);
+          const msg = Array.isArray(data.celular)
+            ? data.celular[0]
+            : String(data.celular);
           next.celular = msg;
           errorMessage += `Celular: ${msg}. `;
         }
         if (data.contacto_emergencia_cel) {
-          const msg = Array.isArray(data.contacto_emergencia_cel) 
-            ? data.contacto_emergencia_cel[0] 
+          const msg = Array.isArray(data.contacto_emergencia_cel)
+            ? data.contacto_emergencia_cel[0]
             : String(data.contacto_emergencia_cel);
           next.contacto_emergencia_cel = msg;
           errorMessage += `Celular emergencia: ${msg}. `;
         }
         if (data.contacto_emergencia_email) {
-          const msg = Array.isArray(data.contacto_emergencia_email) 
-            ? data.contacto_emergencia_email[0] 
+          const msg = Array.isArray(data.contacto_emergencia_email)
+            ? data.contacto_emergencia_email[0]
             : String(data.contacto_emergencia_email);
           next.contacto_emergencia_email = msg;
           errorMessage += `Email emergencia: ${msg}. `;
         }
         if (data.contacto_emergencia_nom) {
-          const msg = Array.isArray(data.contacto_emergencia_nom) 
-            ? data.contacto_emergencia_nom[0] 
+          const msg = Array.isArray(data.contacto_emergencia_nom)
+            ? data.contacto_emergencia_nom[0]
             : String(data.contacto_emergencia_nom);
           next.contacto_emergencia_nom = msg;
           errorMessage += `Nombre emergencia: ${msg}. `;
         }
-        
+
         // Capturar cualquier otro error no mapeado
         if (data.detail) {
           errorMessage += String(data.detail);
         } else if (data.non_field_errors) {
-          const nfe = Array.isArray(data.non_field_errors) 
-            ? data.non_field_errors[0] 
+          const nfe = Array.isArray(data.non_field_errors)
+            ? data.non_field_errors[0]
             : String(data.non_field_errors);
           errorMessage += nfe;
         } else if (Object.keys(next).length === 0) {
           // Si hay data pero no mapeamos nada, mostrar todo
           errorMessage += JSON.stringify(data);
         }
-        
+
         if (Object.keys(next).length) {
           setErrors((prev) => ({ ...prev, ...next }));
         }
@@ -1325,7 +1383,7 @@ export default function PacienteEdicion() {
         // Error de red u otro tipo de error
         errorMessage += e?.message || "Error desconocido. Revisa la consola.";
       }
-      
+
       setError(errorMessage);
       pushToast(errorMessage, "error");
     } finally {
@@ -1366,7 +1424,9 @@ export default function PacienteEdicion() {
       {showSuccess && (
         <div className="fixed top-4 right-4 z-50 animate-in fade-in zoom-in duration-200">
           <div className="rounded-xl bg-green-600 text-white shadow-lg px-4 py-3">
-            <div className="font-semibold">¡Cambios guardados correctamente!</div>
+            <div className="font-semibold">
+              ¡Cambios guardados correctamente!
+            </div>
             <div className="text-sm text-white/90">Redirigiendo…</div>
           </div>
         </div>
@@ -1381,7 +1441,7 @@ export default function PacienteEdicion() {
             <Pencil className="h-5 w-5" />
             Editar paciente
           </h1>
-          
+
           {/* Indicadores de verificación */}
           <div className="space-y-1 mt-1">
             {/* Verificando odontólogo */}
@@ -1398,7 +1458,7 @@ export default function PacienteEdicion() {
                 Este paciente también es odontólogo
               </p>
             )}
-            
+
             {/* Verificando admin */}
             {checkingAdmin && (
               <p className="text-xs text-gray-500 flex items-center gap-1">
@@ -1413,9 +1473,13 @@ export default function PacienteEdicion() {
                 Este paciente también es administrador
               </p>
             )}
-            
+
             {/* Mensaje dinámico según edad */}
-            <p className={`text-xs flex items-center gap-1 ${esMenor ? 'text-orange-600' : 'text-blue-600'}`}>
+            <p
+              className={`text-xs flex items-center gap-1 ${
+                esMenor ? "text-orange-600" : "text-blue-600"
+              }`}
+            >
               <Info className="h-3 w-3" />
               {getMensajeEdad(esMenor)}
             </p>
@@ -1656,7 +1720,11 @@ export default function PacienteEdicion() {
               <div>
                 <label className="block text-sm mb-1">
                   Celular{!esMenor && " *"}
-                  {esMenor && <span className="text-xs text-gray-500 ml-1">(opcional)</span>}
+                  {esMenor && (
+                    <span className="text-xs text-gray-500 ml-1">
+                      (opcional)
+                    </span>
+                  )}
                 </label>
                 <input
                   value={String(user.celular || "")}
@@ -1689,7 +1757,11 @@ export default function PacienteEdicion() {
               <div>
                 <label className="block text-sm mb-1">
                   Correo{!esMenor && " *"}
-                  {esMenor && <span className="text-xs text-gray-500 ml-1">(opcional)</span>}
+                  {esMenor && (
+                    <span className="text-xs text-gray-500 ml-1">
+                      (opcional)
+                    </span>
+                  )}
                 </label>
                 <input
                   type="email"
@@ -1880,7 +1952,9 @@ export default function PacienteEdicion() {
               <div>
                 <label className="block text-sm mb-1">Parentesco</label>
                 <select
-                  value={String(pac.contacto_emergencia_par || "").toLowerCase()}
+                  value={String(
+                    pac.contacto_emergencia_par || ""
+                  ).toLowerCase()}
                   onChange={(e) =>
                     setPac((pp) =>
                       pp
@@ -1960,7 +2034,11 @@ export default function PacienteEdicion() {
               <div className="md:col-span-2">
                 <label className="block text-sm mb-1">
                   Correo contacto{esMenor && " *"}
-                  {!esMenor && <span className="text-xs text-gray-500 ml-1">(opcional)</span>}
+                  {!esMenor && (
+                    <span className="text-xs text-gray-500 ml-1">
+                      (opcional)
+                    </span>
+                  )}
                 </label>
                 <input
                   type="email"
@@ -2019,7 +2097,8 @@ export default function PacienteEdicion() {
                         <select
                           className="w-full min-w-0 rounded-lg border px-2 py-2 text-sm"
                           value={
-                            row.id_antecedente === "" || row.id_antecedente === OTHER
+                            row.id_antecedente === "" ||
+                            row.id_antecedente === OTHER
                               ? String(row.id_antecedente)
                               : String(row.id_antecedente)
                           }
@@ -2109,11 +2188,9 @@ export default function PacienteEdicion() {
                   Antecedentes familiares
                 </p>
               </div>
-
               {familiares.length === 0 && (
                 <p className="text-sm text-gray-600">Sin registros.</p>
               )}
-
               <div className="space-y-2">
                 {familiares.map((row, idx) => {
                   // IDs ya seleccionados en familiares (excluyendo el actual)
@@ -2131,7 +2208,8 @@ export default function PacienteEdicion() {
                         <select
                           className="w-full min-w-0 rounded-lg border px-2 py-2 text-sm"
                           value={
-                            row.id_antecedente === "" || row.id_antecedente === OTHER
+                            row.id_antecedente === "" ||
+                            row.id_antecedente === OTHER
                               ? String(row.id_antecedente)
                               : String(row.id_antecedente)
                           }
@@ -2174,30 +2252,30 @@ export default function PacienteEdicion() {
                           <option value={OTHER}>Otro (especificar…)</option>
                         </select>
                       </div>
-                    <div className="sm:col-span-2">
-                      <select
-                        className="w-full min-w-0 rounded-lg border px-2 py-2 text-sm"
-                        value={row.relacion_familiar}
-                        onChange={(e) =>
-                          setFamiliares((arr) =>
-                            arr.map((r, i) =>
-                              i === idx
-                                ? {
-                                    ...r,
-                                    relacion_familiar: e.target
-                                      .value as RelFamiliar,
-                                  }
-                                : r
+                      <div className="sm:col-span-2">
+                        <select
+                          className="w-full min-w-0 rounded-lg border px-2 py-2 text-sm"
+                          value={row.relacion_familiar}
+                          onChange={(e) =>
+                            setFamiliares((arr) =>
+                              arr.map((r, i) =>
+                                i === idx
+                                  ? {
+                                      ...r,
+                                      relacion_familiar: e.target
+                                        .value as RelFamiliar,
+                                    }
+                                  : r
+                              )
                             )
-                          )
-                        }
-                      >
-                        {FAMILIARES.map((rel) => (
-                          <option key={rel} value={rel}>
-                            {rel.charAt(0).toUpperCase() + rel.slice(1)}
-                          </option>
-                        ))}
-                      </select>
+                          }
+                        >
+                          {FAMILIARES.map((rel) => (
+                            <option key={rel} value={rel}>
+                              {rel.charAt(0).toUpperCase() + rel.slice(1)}
+                            </option>
+                          ))}
+                        </select>
                       </div>
                       <div className="sm:col-span-1">
                         <button
@@ -2215,7 +2293,8 @@ export default function PacienteEdicion() {
                     </div>
                   );
                 })}
-              </div>              <button
+              </div>{" "}
+              <button
                 type="button"
                 onClick={() =>
                   setFamiliares((arr) => [
@@ -2231,7 +2310,6 @@ export default function PacienteEdicion() {
                   ? "Límite alcanzado (3)"
                   : "Añadir familiar"}
               </button>
-
               {familiaresIncomplete && (
                 <p className="mt-1 text-xs text-red-600">
                   Primero selecciona el antecedente anterior o quítalo.

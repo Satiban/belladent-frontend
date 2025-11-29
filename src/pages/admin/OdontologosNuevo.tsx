@@ -3,6 +3,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { api } from "../../api/axios";
 import { Loader2, Eye, EyeOff, User, ArrowLeft } from "lucide-react";
+import { useFotoPerfil } from "../../hooks/useFotoPerfil";
 
 const PRIMARY = "#0070B7";
 
@@ -70,10 +71,10 @@ function isAdult18(dateStr: string) {
   if (!dateStr) return false;
   const dob = new Date(dateStr + "T00:00:00");
   if (Number.isNaN(dob.getTime())) return false;
-  
+
   // Validar que la fecha no sea anterior a 1930
   if (dob.getFullYear() < 1930) return false;
-  
+
   const today = new Date();
   let years = today.getFullYear() - dob.getFullYear();
   const mDiff = today.getMonth() - dob.getMonth();
@@ -93,6 +94,7 @@ function toMinutes(hhmm: string) {
 
 export default function OdontologosNuevo() {
   const navigate = useNavigate();
+  const { subirFoto } = useFotoPerfil();
 
   // Stepper (4 pasos)
   const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
@@ -111,7 +113,9 @@ export default function OdontologosNuevo() {
   const [cedulaExists, setCedulaExists] = useState<boolean | null>(null);
   const [emailExists, setEmailExists] = useState<boolean | null>(null);
   const [celularExists, setCelularExists] = useState<boolean | null>(null);
-  const [fechaNacimientoValid, setFechaNacimientoValid] = useState<boolean | null>(null);
+  const [fechaNacimientoValid, setFechaNacimientoValid] = useState<
+    boolean | null
+  >(null);
   const lastQueried = useRef<{
     cedula?: string;
     email?: string;
@@ -587,13 +591,17 @@ export default function OdontologosNuevo() {
       Object.entries(payloadUsuario).forEach(([k, v]) =>
         fd.append(k, String(v))
       );
-      fd.append("activo", "true"); // activar usuario al crear
-      if (foto) fd.append("foto", foto);
+      fd.append("activo", "true");
 
       const usrRes = await api.post(`/usuarios/`, fd, {
         headers: { "Content-Type": "multipart/form-data" },
       });
       const id_usuario = usrRes.data.id_usuario;
+
+      // === SUBIR FOTO (si eligió una) ===
+      if (foto) {
+        await subirFoto(id_usuario, foto);
+      }
 
       // 2) Armar especialidades_detalle
       const especialidades_detalle = idsEspecialidades.map((id) => ({
@@ -910,28 +918,51 @@ export default function OdontologosNuevo() {
                     const dob = new Date(dateStr + "T00:00:00");
                     if (Number.isNaN(dob.getTime())) {
                       setFechaNacimientoValid(false);
-                      setErrors((prev) => ({ ...prev, fecha_nacimiento: "Fecha inválida" }));
+                      setErrors((prev) => ({
+                        ...prev,
+                        fecha_nacimiento: "Fecha inválida",
+                      }));
                       return;
                     }
                     if (dob.getFullYear() < 1930) {
                       setFechaNacimientoValid(false);
-                      setErrors((prev) => ({ ...prev, fecha_nacimiento: "La fecha no puede ser anterior a 1930" }));
+                      setErrors((prev) => ({
+                        ...prev,
+                        fecha_nacimiento:
+                          "La fecha no puede ser anterior a 1930",
+                      }));
                       return;
                     }
                     const today = new Date();
                     let years = today.getFullYear() - dob.getFullYear();
                     const mDiff = today.getMonth() - dob.getMonth();
-                    if (mDiff < 0 || (mDiff === 0 && today.getDate() < dob.getDate())) years--;
+                    if (
+                      mDiff < 0 ||
+                      (mDiff === 0 && today.getDate() < dob.getDate())
+                    )
+                      years--;
                     if (years < 18) {
                       setFechaNacimientoValid(false);
-                      setErrors((prev) => ({ ...prev, fecha_nacimiento: "Debe ser mayor de 18 años" }));
+                      setErrors((prev) => ({
+                        ...prev,
+                        fecha_nacimiento: "Debe ser mayor de 18 años",
+                      }));
                       return;
                     }
                     setFechaNacimientoValid(true);
-                    setErrors((prev) => ({ ...prev, fecha_nacimiento: undefined }));
+                    setErrors((prev) => ({
+                      ...prev,
+                      fecha_nacimiento: undefined,
+                    }));
                   }}
                   min="1930-01-01"
-                  max={new Date(new Date().setFullYear(new Date().getFullYear() - 18)).toISOString().split('T')[0]}
+                  max={
+                    new Date(
+                      new Date().setFullYear(new Date().getFullYear() - 18)
+                    )
+                      .toISOString()
+                      .split("T")[0]
+                  }
                   className={inputClass("fecha_nacimiento")}
                 />
                 {errors.fecha_nacimiento && (

@@ -4,6 +4,8 @@ import { useNavigate } from "react-router-dom";
 import { api } from "../../api/axios";
 import { useAuth } from "../../context/AuthContext";
 import { Eye, EyeOff } from "lucide-react";
+import { e164ToLocal, localToE164 } from "../../utils/phoneFormat";
+import { useFotoPerfil } from "../../hooks/useFotoPerfil";
 
 /* ===== Tipos ===== */
 type Odontologo = {
@@ -166,6 +168,8 @@ function ToastView({
 export default function PerfilEdicion() {
   const navigate = useNavigate();
   const { usuario } = useAuth();
+  const idUsuario = usuario?.id_usuario;
+  const { subirFoto, eliminarFoto } = useFotoPerfil();
 
   // ID del odontólogo desde el usuario autenticado
   const odontologoId = useMemo<number | null>(() => {
@@ -191,9 +195,7 @@ export default function PerfilEdicion() {
   const [showPass, setShowPass] = useState(false);
   const [showPass2, setShowPass2] = useState(false);
 
-  const [, setEspecialidadesOpts] = useState<
-    EspecialidadOption[]
-  >([]);
+  const [, setEspecialidadesOpts] = useState<EspecialidadOption[]>([]);
   const [horarios, setHorarios] = useState<HorarioForm[]>(
     Array.from({ length: 7 }).map((_, i) => ({
       dia_semana: i,
@@ -322,7 +324,7 @@ export default function PerfilEdicion() {
             sexo: normSexo(data.sexo),
             fecha_nacimiento: data.fecha_nacimiento ?? "",
             tipo_sangre: (data.tipo_sangre ?? "").toString(),
-            celular: (data.celular ?? "").toString(),
+            celular: e164ToLocal(data.celular) ?? "",
             usuario_email: (data.usuario_email ?? "").toString(),
             password: "",
             password_confirm: "",
@@ -641,7 +643,7 @@ export default function PerfilEdicion() {
       fd.append("sexo", form.sexo || "");
       fd.append("fecha_nacimiento", form.fecha_nacimiento || "");
       fd.append("tipo_sangre", form.tipo_sangre || "");
-      fd.append("celular", form.celular || "");
+      fd.append("celular", localToE164(form.celular) || "");
       fd.append("usuario_email", form.usuario_email || "");
       if (form.password.trim()) fd.append("password", form.password.trim());
       fd.append(
@@ -649,12 +651,21 @@ export default function PerfilEdicion() {
         JSON.stringify(form.especialidades_detalle || [])
       );
       fd.append("horarios", JSON.stringify(horariosPayload));
-      if (fotoFile) fd.append("foto", fotoFile);
-      if (fotoRemove && !fotoFile) fd.append("foto_remove", "true");
-
+      // 1. Guardar datos del odontólogo
       await api.patch(`/odontologos/${odo.id_odontologo}/`, fd, {
         headers: { "Content-Type": "multipart/form-data" },
       });
+
+      // 2. Subir foto nueva
+      if (idUsuario && fotoFile) {
+        await subirFoto(idUsuario, fotoFile);
+      }
+
+      // 3. Eliminar foto actual
+      if (idUsuario && fotoRemove && !fotoFile) {
+        await eliminarFoto(idUsuario);
+      }
+
       pushToast("Cambios guardados correctamente", "success");
       setTimeout(() => navigate("/odontologo/perfil"), 600);
     } catch (e) {
@@ -996,42 +1007,48 @@ export default function PerfilEdicion() {
                 {errors.password && (
                   <p className="mt-1 text-xs text-red-600">{errors.password}</p>
                 )}
-                
+
                 {/* Indicadores de validación de contraseña */}
                 <div className="mt-2 space-y-1 text-xs">
-                  <p className={`${
-                    form.password.length === 0
-                      ? "text-gray-500"
-                      : form.password.length >= 8
-                      ? "text-green-600"
-                      : "text-red-600"
-                  }`}>
+                  <p
+                    className={`${
+                      form.password.length === 0
+                        ? "text-gray-500"
+                        : form.password.length >= 8
+                        ? "text-green-600"
+                        : "text-red-600"
+                    }`}
+                  >
                     {form.password.length === 0
                       ? "• Mínimo 8 caracteres"
                       : form.password.length >= 8
                       ? "✓ Mínimo 8 caracteres"
                       : "✗ Mínimo 8 caracteres"}
                   </p>
-                  <p className={`${
-                    form.password.length === 0
-                      ? "text-gray-500"
-                      : /[A-Z]/.test(form.password)
-                      ? "text-green-600"
-                      : "text-red-600"
-                  }`}>
+                  <p
+                    className={`${
+                      form.password.length === 0
+                        ? "text-gray-500"
+                        : /[A-Z]/.test(form.password)
+                        ? "text-green-600"
+                        : "text-red-600"
+                    }`}
+                  >
                     {form.password.length === 0
                       ? "• Al menos una letra mayúscula"
                       : /[A-Z]/.test(form.password)
                       ? "✓ Al menos una letra mayúscula"
                       : "✗ Al menos una letra mayúscula"}
                   </p>
-                  <p className={`${
-                    form.password.length === 0
-                      ? "text-gray-500"
-                      : /\d/.test(form.password)
-                      ? "text-green-600"
-                      : "text-red-600"
-                  }`}>
+                  <p
+                    className={`${
+                      form.password.length === 0
+                        ? "text-gray-500"
+                        : /\d/.test(form.password)
+                        ? "text-green-600"
+                        : "text-red-600"
+                    }`}
+                  >
                     {form.password.length === 0
                       ? "• Al menos un número"
                       : /\d/.test(form.password)
@@ -1041,7 +1058,9 @@ export default function PerfilEdicion() {
                   <p className="text-gray-600 mt-1">
                     {form.password.length === 0
                       ? "Estado general: Sin cambios"
-                      : form.password.length >= 8 && /[A-Z]/.test(form.password) && /\d/.test(form.password)
+                      : form.password.length >= 8 &&
+                        /[A-Z]/.test(form.password) &&
+                        /\d/.test(form.password)
                       ? "Estado general: Contraseña válida"
                       : "Estado general: Contraseña no válida"}
                   </p>
@@ -1077,19 +1096,23 @@ export default function PerfilEdicion() {
                     {errors.password_confirm}
                   </p>
                 )}
-                
+
                 {/* Indicador de coincidencia de contraseñas */}
                 <div className="mt-2 text-xs">
-                  <p className={`${
-                    form.password_confirm.length === 0
-                      ? "text-gray-500"
-                      : form.password === form.password_confirm && form.password.length > 0
-                      ? "text-green-600"
-                      : "text-red-600"
-                  }`}>
+                  <p
+                    className={`${
+                      form.password_confirm.length === 0
+                        ? "text-gray-500"
+                        : form.password === form.password_confirm &&
+                          form.password.length > 0
+                        ? "text-green-600"
+                        : "text-red-600"
+                    }`}
+                  >
                     {form.password_confirm.length === 0
                       ? "Las contraseñas deben coincidir"
-                      : form.password === form.password_confirm && form.password.length > 0
+                      : form.password === form.password_confirm &&
+                        form.password.length > 0
                       ? "✓ Las contraseñas coinciden"
                       : "✗ Las contraseñas no coinciden"}
                   </p>

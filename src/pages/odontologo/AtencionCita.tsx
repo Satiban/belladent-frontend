@@ -113,7 +113,7 @@ const fmtHora = (hhmm?: string | null, fallback?: string | null) => {
 const KB = 1024;
 const MB = 1024 * KB;
 const MAX_SIZE = 10 * MB;
-const ALLOWED_EXT = new Set(["pdf", "jpg", "jpeg", "png", "webp"]);
+const ALLOWED_EXT = new Set(["pdf", "jpg", "jpeg", "png", "webp", "zip", "rar"]);
 
 /* ====================== Componente ====================== */
 
@@ -266,28 +266,18 @@ const AtencionCita: React.FC = () => {
           setAdjuntos(listAdj);
         }
 
-        // 5) Antecedentes (principal y fallback)
+        // 5) Antecedentes
         if (c?.id_paciente) {
           try {
-            // Principal: tu ViewSet dedicado
-            const a1 = await api.get<
+            const resp = await api.get<
               { results?: AntecedentePaciente[] } | AntecedentePaciente[]
             >(`/paciente-antecedentes/?id_paciente=${c.id_paciente}`);
-            const ants1 = Array.isArray(a1.data)
-              ? a1.data
-              : a1.data.results ?? [];
-
-            let final = ants1;
-            if (!final.length) {
-              // Fallback por si el router es diferente
-              const a2 = await api.get<
-                { results?: AntecedentePaciente[] } | AntecedentePaciente[]
-              >(`/antecedentes/pacientes/?id_paciente=${c.id_paciente}`);
-              final = Array.isArray(a2.data) ? a2.data : a2.data.results ?? [];
-            }
+            const ants = Array.isArray(resp.data)
+              ? resp.data
+              : resp.data.results ?? [];
 
             // Normalizar
-            setAntecedentes(final.map(normalizeAntecedente));
+            setAntecedentes(ants.map(normalizeAntecedente));
           } catch {
             setAntecedentes([]);
           }
@@ -366,7 +356,7 @@ const AtencionCita: React.FC = () => {
     if (!sizeOk) return `“${file.name}” supera 10MB.`;
     const ext = (file.name.split(".").pop() || "").toLowerCase();
     if (!ALLOWED_EXT.has(ext)) {
-      return `“${file.name}” tiene extensión no permitida. Usa pdf/jpg/jpeg/png/webp.`;
+      return `“${file.name}” tiene extensión no permitida. Usa pdf/jpg/jpeg/png/webp/zip/rar.`;
     }
     return null;
   };
@@ -393,7 +383,7 @@ const AtencionCita: React.FC = () => {
       for (const f of lote) {
         const formData = new FormData();
         formData.append("id_ficha_medica", String(ficha.id_ficha_medica));
-        formData.append("archivo", f);
+        formData.append("archivo_file", f);
         const resp = await api.post<ArchivoAdjunto>(
           `/archivos-adjuntos/`,
           formData,
@@ -406,7 +396,7 @@ const AtencionCita: React.FC = () => {
       setAdjuntos((prev) => [...nuevos, ...prev]);
     } catch (err: any) {
       const backendErr =
-        err?.response?.data?.archivo?.[0] ||
+        err?.response?.data?.archivo_file?.[0] ||
         err?.response?.data?.detail ||
         "Error subiendo adjuntos.";
       setErrors(String(backendErr));
@@ -752,7 +742,7 @@ const AtencionCita: React.FC = () => {
                 ref={inputRef}
                 type="file"
                 multiple
-                accept=".pdf,.jpg,.jpeg,.png,.webp"
+                accept=".pdf,.jpg,.jpeg,.png,.webp,.zip,.rar"
                 className="hidden"
                 onChange={(e) => subirAdjuntos(e.target.files)}
               />

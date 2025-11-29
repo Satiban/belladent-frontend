@@ -4,6 +4,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { Pencil, Info, Loader2 } from "lucide-react";
 import { api } from "../../api/axios";
 import { e164ToLocal, localToE164 } from "../../utils/phoneFormat";
+import { useFotoPerfil } from "../../hooks/useFotoPerfil";
 
 /* =========================
    Tipos
@@ -82,10 +83,14 @@ function isValidCedulaEC(ci: string): boolean {
   const digitoVerif = mod === 0 ? 0 : 10 - mod;
   return digitoVerif === parseInt(ci[9], 10);
 }
-function isValidEmail(email: string, permitirSistema: boolean = false): boolean {
+function isValidEmail(
+  email: string,
+  permitirSistema: boolean = false
+): boolean {
   if (!email) return false;
   // Rechazar emails del sistema SOLO si NO se permite (es decir, si es mayor de edad)
-  if (!permitirSistema && email.toLowerCase().includes('@oralflow.system')) return false;
+  if (!permitirSistema && email.toLowerCase().includes("@oralflow.system"))
+    return false;
   return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email);
 }
 function fullNameTwoWords(name: string): boolean {
@@ -96,7 +101,7 @@ function fullNameTwoWords(name: string): boolean {
 function getFechaMin6Meses(): string {
   const hoy = new Date();
   hoy.setMonth(hoy.getMonth() - 6);
-  return hoy.toISOString().split('T')[0];
+  return hoy.toISOString().split("T")[0];
 }
 
 // Mensaje dinámico según edad
@@ -113,12 +118,21 @@ function useDebouncedCallback(cb: () => void, delay = 400) {
     t.current = window.setTimeout(cb, delay);
   };
 }
+
 function absolutize(url?: string | null) {
   if (!url) return null;
+
+  // No absolutizar archivos tipo "7.JPG"
+  if (!url.startsWith("http") && !url.includes("/")) {
+    return null;
+  }
+
   try {
+    // Si es URL absoluta válida
     new URL(url);
     return url;
   } catch {
+    // Convertir rutas relativas del backend
     const base = (api.defaults as any)?.baseURL ?? "";
     let origin = "";
     try {
@@ -129,6 +143,7 @@ function absolutize(url?: string | null) {
     return `${origin.replace(/\/$/, "")}/${String(url).replace(/^\//, "")}`;
   }
 }
+
 function normSexo(v?: string | null): "" | "M" | "F" {
   if (!v) return "";
   const s = String(v).trim().toUpperCase();
@@ -187,6 +202,7 @@ export default function EditarPacienteOdontologo() {
   const { id } = useParams();
   const pacienteId = useMemo(() => Number(id), [id]);
   const navigate = useNavigate();
+  const { subirFoto, eliminarFoto } = useFotoPerfil();
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -196,14 +212,14 @@ export default function EditarPacienteOdontologo() {
   // Entidades
   const [pac, setPac] = useState<Paciente | null>(null);
   const [user, setUser] = useState<Usuario | null>(null);
-  
+
   // Estado para verificar si es menor de edad
   const [esMenor, setEsMenor] = useState<boolean>(false);
-  
+
   // Estado para verificar si también es odontólogo
   const [esOdontologo, setEsOdontologo] = useState<boolean | null>(null);
   const [checkingOdontologo, setCheckingOdontologo] = useState(false);
-  
+
   // Estado para verificar si también es administrador
   const [esAdmin, setEsAdmin] = useState<boolean | null>(null);
   const [checkingAdmin, setCheckingAdmin] = useState(false);
@@ -300,10 +316,12 @@ export default function EditarPacienteOdontologo() {
           ).toLowerCase(),
           celular: String(normalized.celular || ""),
         };
-        
+
         // Calcular si es menor de edad
         if (normalized.fecha_nacimiento) {
-          const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(normalized.fecha_nacimiento);
+          const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(
+            normalized.fecha_nacimiento
+          );
           if (match) {
             const year = Number(match[1]);
             const month = Number(match[2]) - 1;
@@ -313,19 +331,24 @@ export default function EditarPacienteOdontologo() {
               const now = new Date();
               let age = now.getFullYear() - birth.getFullYear();
               const monthDiff = now.getMonth() - birth.getMonth();
-              if (monthDiff < 0 || (monthDiff === 0 && now.getDate() < birth.getDate())) {
+              if (
+                monthDiff < 0 ||
+                (monthDiff === 0 && now.getDate() < birth.getDate())
+              ) {
                 age--;
               }
               setEsMenor(age < 18);
             }
           }
         }
-        
+
         // Verificar si también es odontólogo
         if (p.id_usuario) {
           setCheckingOdontologo(true);
           try {
-            const verifyRes = await api.get(`/usuarios/${p.id_usuario}/verificar-rol-odontologo/`);
+            const verifyRes = await api.get(
+              `/usuarios/${p.id_usuario}/verificar-rol-odontologo/`
+            );
             setEsOdontologo(verifyRes.data?.existe === true);
           } catch (err) {
             setEsOdontologo(null);
@@ -333,7 +356,7 @@ export default function EditarPacienteOdontologo() {
             setCheckingOdontologo(false);
           }
         }
-        
+
         // Verificar si también es administrador (is_staff=true)
         if (p.id_usuario) {
           setCheckingAdmin(true);
@@ -452,20 +475,20 @@ export default function EditarPacienteOdontologo() {
     if (k === "usuario_email") setEmailExists(null);
     if (k === "celular") setCelularExists(null);
     setUser({ ...user, [k]: v as any });
-    
+
     // Recalcular edad si cambia fecha de nacimiento
     if (k === "fecha_nacimiento") {
       const fechaNac = String(v);
       if (fechaNac) {
         const fechaSeleccionada = new Date(fechaNac);
-        const fechaMin1930 = new Date('1930-01-01');
+        const fechaMin1930 = new Date("1930-01-01");
         const fechaMin6Meses = new Date(getFechaMin6Meses());
-        
+
         // Validar rango y mostrar error inmediatamente
         if (fechaSeleccionada < fechaMin1930) {
           setErrors((prev) => ({
             ...prev,
-            fecha_nacimiento: "La fecha no puede ser anterior a 1930."
+            fecha_nacimiento: "La fecha no puede ser anterior a 1930.",
           }));
           setEsMenor(false);
           return;
@@ -473,19 +496,22 @@ export default function EditarPacienteOdontologo() {
         if (fechaSeleccionada > fechaMin6Meses) {
           setErrors((prev) => ({
             ...prev,
-            fecha_nacimiento: "El paciente debe tener al menos 6 meses."
+            fecha_nacimiento: "El paciente debe tener al menos 6 meses.",
           }));
           setEsMenor(false);
           return;
         }
-        
+
         // Si está en el rango válido, limpiar error y calcular edad
         if (!Number.isNaN(fechaSeleccionada.getTime())) {
           setErrors((prev) => ({ ...prev, fecha_nacimiento: "" }));
           const now = new Date();
           let age = now.getFullYear() - fechaSeleccionada.getFullYear();
           const monthDiff = now.getMonth() - fechaSeleccionada.getMonth();
-          if (monthDiff < 0 || (monthDiff === 0 && now.getDate() < fechaSeleccionada.getDate())) {
+          if (
+            monthDiff < 0 ||
+            (monthDiff === 0 && now.getDate() < fechaSeleccionada.getDate())
+          ) {
             age--;
           }
           setEsMenor(age < 18);
@@ -619,14 +645,17 @@ export default function EditarPacienteOdontologo() {
     lastQueried.current.cedula = c;
     verificarUnico({ cedula: c });
   };
-  
+
   const handleEmailBlur = () => {
     if (!user) return;
     const m = String(user.usuario_email || user.email || "").trim();
     if (!m) return;
     // Solo rechazar email del sistema si es MAYOR de edad
-    if (!esMenor && m.toLowerCase().includes('@oralflow.system')) {
-      setErrors((p) => ({ ...p, usuario_email: "Los mayores de edad no pueden usar emails del sistema." }));
+    if (!esMenor && m.toLowerCase().includes("@oralflow.system")) {
+      setErrors((p) => ({
+        ...p,
+        usuario_email: "Los mayores de edad no pueden usar emails del sistema.",
+      }));
       setEmailExists(null);
       return;
     }
@@ -639,7 +668,7 @@ export default function EditarPacienteOdontologo() {
     lastQueried.current.email = m;
     verificarUnico({ email: m });
   };
-  
+
   const handleCelularBlur = () => {
     if (!user) return;
     const c = String(user.celular || "").trim();
@@ -664,13 +693,16 @@ export default function EditarPacienteOdontologo() {
       setCedulaExists(null);
     }
   }, 400);
-  
+
   const debouncedCheckEmail = useDebouncedCallback(() => {
     if (!user) return;
     const m = String(user.usuario_email || user.email || "").trim();
     // Solo rechazar email del sistema si es MAYOR de edad
-    if (!esMenor && m.toLowerCase().includes('@oralflow.system')) {
-      setErrors((p) => ({ ...p, usuario_email: "Los mayores de edad no pueden usar emails del sistema." }));
+    if (!esMenor && m.toLowerCase().includes("@oralflow.system")) {
+      setErrors((p) => ({
+        ...p,
+        usuario_email: "Los mayores de edad no pueden usar emails del sistema.",
+      }));
       setEmailExists(null);
     } else if (isValidEmail(m, esMenor)) {
       lastQueried.current.email = m;
@@ -679,7 +711,7 @@ export default function EditarPacienteOdontologo() {
       setEmailExists(null);
     }
   }, 400);
-  
+
   const debouncedCheckCelular = useDebouncedCallback(() => {
     if (!user) return;
     const c = String(user.celular || "").trim();
@@ -695,12 +727,12 @@ export default function EditarPacienteOdontologo() {
     if (user?.cedula) debouncedCheckCedula();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.cedula]);
-  
+
   useEffect(() => {
     if (user?.usuario_email || user?.email) debouncedCheckEmail();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.usuario_email]);
-  
+
   useEffect(() => {
     if (user?.celular) debouncedCheckCelular();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -728,22 +760,22 @@ export default function EditarPacienteOdontologo() {
     if (cedulaExists === true) newErrors.cedula = "Cédula inválida.";
 
     if (!user.sexo) newErrors.sexo = "Selecciona el sexo.";
-    
+
     // Validar fecha de nacimiento
     if (!user.fecha_nacimiento) {
       newErrors.fecha_nacimiento = "Obligatorio.";
     } else {
       const fechaSeleccionada = new Date(user.fecha_nacimiento);
-      const fechaMin1930 = new Date('1930-01-01');
+      const fechaMin1930 = new Date("1930-01-01");
       const fechaMin6Meses = new Date(getFechaMin6Meses());
-      
+
       if (fechaSeleccionada < fechaMin1930) {
         newErrors.fecha_nacimiento = "La fecha no puede ser anterior a 1930.";
       } else if (fechaSeleccionada > fechaMin6Meses) {
         newErrors.fecha_nacimiento = "El paciente debe tener al menos 6 meses.";
       }
     }
-    
+
     if (!user.tipo_sangre)
       newErrors.tipo_sangre = "Selecciona el tipo de sangre.";
 
@@ -754,7 +786,7 @@ export default function EditarPacienteOdontologo() {
       if (celularPropio && !/^09\d{8}$/.test(celularPropio))
         newErrors.celular = "Formato 09xxxxxxxx.";
       if (celularExists === true) newErrors.celular = "Celular ya registrado.";
-      
+
       const emailPropio = String(user.usuario_email || user.email || "").trim();
       if (emailPropio && !isValidEmail(emailPropio, true))
         newErrors.usuario_email = "Correo inválido.";
@@ -766,8 +798,9 @@ export default function EditarPacienteOdontologo() {
       if (celularExists === true) newErrors.celular = "Celular ya registrado.";
 
       const m = String(user.usuario_email || user.email || "");
-      if (m.toLowerCase().includes('@oralflow.system'))
-        newErrors.usuario_email = "Los mayores de edad no pueden usar emails del sistema.";
+      if (m.toLowerCase().includes("@oralflow.system"))
+        newErrors.usuario_email =
+          "Los mayores de edad no pueden usar emails del sistema.";
       else if (!isValidEmail(m, false))
         newErrors.usuario_email = "Correo inválido.";
       if (emailExists === true) newErrors.usuario_email = "Correo inválido.";
@@ -778,32 +811,35 @@ export default function EditarPacienteOdontologo() {
     const ecel = String(pac.contacto_emergencia_cel || "").trim();
     const eemail = String(pac.contacto_emergencia_email || "").trim();
     const epar = String(pac.contacto_emergencia_par || "");
-    
+
     // Nombre contacto emergencia: SIEMPRE obligatorio
     if (!fullNameTwoWords(enom))
       newErrors.contacto_emergencia_nom = "Nombre y apellido.";
-    
+
     // Celular contacto emergencia: SIEMPRE obligatorio
     if (!/^09\d{8}$/.test(ecel))
       newErrors.contacto_emergencia_cel = "09xxxxxxxx.";
-    
+
     // Parentesco: SIEMPRE obligatorio
     if (!epar) newErrors.contacto_emergencia_par = "Selecciona parentesco.";
-    
+
     // Email contacto emergencia: OBLIGATORIO solo si es MENOR, opcional si es MAYOR
     // NUNCA puede ser @oralflow.system (debe ser email real de contacto)
     if (esMenor) {
       if (!eemail)
-        newErrors.contacto_emergencia_email = "Correo obligatorio para menores.";
-      else if (eemail.toLowerCase().includes('@oralflow.system'))
-        newErrors.contacto_emergencia_email = "El contacto de emergencia debe tener email real.";
+        newErrors.contacto_emergencia_email =
+          "Correo obligatorio para menores.";
+      else if (eemail.toLowerCase().includes("@oralflow.system"))
+        newErrors.contacto_emergencia_email =
+          "El contacto de emergencia debe tener email real.";
       else if (!isValidEmail(eemail, false))
         newErrors.contacto_emergencia_email = "Correo inválido.";
     } else {
       // Si es mayor y proporciona email, validar formato (pero no es obligatorio)
       if (eemail) {
-        if (eemail.toLowerCase().includes('@oralflow.system'))
-          newErrors.contacto_emergencia_email = "El contacto de emergencia debe tener email real.";
+        if (eemail.toLowerCase().includes("@oralflow.system"))
+          newErrors.contacto_emergencia_email =
+            "El contacto de emergencia debe tener email real.";
         else if (!isValidEmail(eemail, false))
           newErrors.contacto_emergencia_email = "Correo inválido.";
       }
@@ -864,42 +900,60 @@ export default function EditarPacienteOdontologo() {
       fd.append("sexo", String(user.sexo || ""));
       fd.append("fecha_nacimiento", String(user.fecha_nacimiento || ""));
       fd.append("tipo_sangre", String(user.tipo_sangre || ""));
-      
+
       // Convertir celular a E.164 antes de enviar
       const celularE164 = localToE164(String(user.celular || ""));
       if (celularE164) {
         fd.append("celular", celularE164);
       }
-      
+
       fd.append(
         "usuario_email",
         String(user.usuario_email || user.email || "")
       );
       fd.append("activo", user.activo ? "true" : "false");
 
-      if (fotoFile) fd.append("foto", fotoFile);
-      if (fotoRemove && !fotoFile) fd.append("foto_remove", "true");
-
-      const usrPatch = await api.patch(`/usuarios/${user.id_usuario}/`, fd, {
+      // 1) PATCH usuario (multipart sin foto)
+      await api.patch(`/usuarios/${user.id_usuario}/`, fd, {
         headers: { "Content-Type": "multipart/form-data" },
       });
 
-      const newUser = usrPatch.data as Usuario;
+      // 1.1 Subir foto (nuevo hook)
+      if (fotoFile) {
+        await subirFoto(user.id_usuario, fotoFile);
+      }
+
+      // 1.2 Eliminar foto (nuevo hook)
+      if (fotoRemove && !fotoFile) {
+        await eliminarFoto(user.id_usuario);
+      }
+
+      // 1.3 Recargar usuario REAL desde backend
+      const freshUserResp = await api.get(`/usuarios/${user.id_usuario}/`);
+      const newUser = freshUserResp.data as Usuario;
+
+      // Absolutizar la URL real
       newUser.foto = absolutize(newUser.foto);
-      // Convertir celular de vuelta a formato local
+
+      // Convertir celular a formato local
       newUser.celular = e164ToLocal(newUser.celular);
+
       setUser({
         ...newUser,
         usuario_email: newUser.usuario_email ?? newUser.email ?? "",
         activo: newUser.activo ?? newUser.is_active ?? true,
         sexo: normSexo(newUser.sexo),
       });
+
+      // Reset
       setFotoFile(null);
       setFotoPreview(null);
       setFotoRemove(false);
 
       // 2) PATCH paciente (contacto emergencia)
-      const celularEmergenciaE164 = localToE164(pac.contacto_emergencia_cel ?? "");
+      const celularEmergenciaE164 = localToE164(
+        pac.contacto_emergencia_cel ?? ""
+      );
       await api.patch(`/pacientes/${pac.id_paciente}/`, {
         contacto_emergencia_nom: pac.contacto_emergencia_nom ?? "",
         contacto_emergencia_cel: celularEmergenciaE164,
@@ -1010,7 +1064,7 @@ export default function EditarPacienteOdontologo() {
             <Pencil className="h-5 w-5" />
             Editar paciente
           </h1>
-          
+
           {/* Indicadores de verificación */}
           <div className="space-y-1 mt-1">
             {/* Verificando odontólogo */}
@@ -1024,10 +1078,11 @@ export default function EditarPacienteOdontologo() {
             {esOdontologo === true && (
               <p className="text-xs text-blue-600 flex items-center gap-1">
                 <Info className="h-3 w-3" />
-                Este paciente también es odontólogo (fecha de nacimiento bloqueada)
+                Este paciente también es odontólogo (fecha de nacimiento
+                bloqueada)
               </p>
             )}
-            
+
             {/* Verificando admin */}
             {checkingAdmin && (
               <p className="text-xs text-gray-500 flex items-center gap-1">
@@ -1237,7 +1292,11 @@ export default function EditarPacienteOdontologo() {
                   min="1930-01-01"
                   max={getFechaMin6Meses()}
                   disabled={esOdontologo === true}
-                  className={`${inputClass("fecha_nacimiento")} ${esOdontologo === true ? 'bg-gray-100 cursor-not-allowed' : ''}`}
+                  className={`${inputClass("fecha_nacimiento")} ${
+                    esOdontologo === true
+                      ? "bg-gray-100 cursor-not-allowed"
+                      : ""
+                  }`}
                 />
                 {errors.fecha_nacimiento && (
                   <p className="mt-1 text-xs text-red-600">
@@ -1246,11 +1305,16 @@ export default function EditarPacienteOdontologo() {
                 )}
                 {esOdontologo && (
                   <p className="mt-1 text-xs text-blue-600">
-                    No se puede modificar la fecha de nacimiento de un odontólogo registrado
+                    No se puede modificar la fecha de nacimiento de un
+                    odontólogo registrado
                   </p>
                 )}
                 {user.fecha_nacimiento && (
-                  <p className={`mt-1 text-xs ${esMenor ? 'text-blue-600' : 'text-gray-600'}`}>
+                  <p
+                    className={`mt-1 text-xs ${
+                      esMenor ? "text-blue-600" : "text-gray-600"
+                    }`}
+                  >
                     {getMensajeEdad(esMenor)}
                   </p>
                 )}
@@ -1276,7 +1340,7 @@ export default function EditarPacienteOdontologo() {
                   </p>
                 )}
               </div>
-              
+
               {/* Celular del paciente */}
               <div>
                 <label className="block text-sm mb-1">
@@ -1297,9 +1361,7 @@ export default function EditarPacienteOdontologo() {
                   maxLength={10}
                 />
                 {errors.celular && (
-                  <p className="mt-1 text-xs text-red-600">
-                    {errors.celular}
-                  </p>
+                  <p className="mt-1 text-xs text-red-600">{errors.celular}</p>
                 )}
                 {checkingCelular && !errors.celular && (
                   <p className="mt-1 text-xs text-gray-500">
@@ -1307,7 +1369,9 @@ export default function EditarPacienteOdontologo() {
                   </p>
                 )}
                 {celularExists === false && !errors.celular && (
-                  <p className="mt-1 text-xs text-green-600">Celular validado</p>
+                  <p className="mt-1 text-xs text-green-600">
+                    Celular validado
+                  </p>
                 )}
                 {esMenor && (
                   <p className="mt-1 text-xs text-gray-600">
@@ -1315,7 +1379,7 @@ export default function EditarPacienteOdontologo() {
                   </p>
                 )}
               </div>
-              
+
               {/* Email del paciente */}
               <div>
                 <label className="block text-sm mb-1">
@@ -1324,7 +1388,9 @@ export default function EditarPacienteOdontologo() {
                 <input
                   type="email"
                   value={String(user.usuario_email || user.email || "")}
-                  onChange={(e) => setUserField("usuario_email", e.target.value.trim())}
+                  onChange={(e) =>
+                    setUserField("usuario_email", e.target.value.trim())
+                  }
                   onBlur={handleEmailBlur}
                   className={inputClass("usuario_email")}
                   placeholder="correo@ejemplo.com"
@@ -1460,11 +1526,12 @@ export default function EditarPacienteOdontologo() {
                   </p>
                 )}
               </div>
-              
+
               {/* Email contacto de emergencia */}
               <div className="md:col-span-2">
                 <label className="block text-sm mb-1">
-                  Correo contacto {esMenor && <span className="text-red-600">*</span>}
+                  Correo contacto{" "}
+                  {esMenor && <span className="text-red-600">*</span>}
                 </label>
                 <input
                   type="email"
@@ -1472,7 +1539,10 @@ export default function EditarPacienteOdontologo() {
                   onChange={(e) =>
                     setPac((pp) =>
                       pp
-                        ? { ...pp, contacto_emergencia_email: e.target.value.trim() }
+                        ? {
+                            ...pp,
+                            contacto_emergencia_email: e.target.value.trim(),
+                          }
                         : pp
                     )
                   }

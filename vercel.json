@@ -11,10 +11,6 @@
           "value": "DENY"
         },
         {
-          "key": "Content-Security-Policy",
-          "value": "frame-ancestors 'none'"
-        },
-        {
           "key": "Access-Control-Allow-Origin",
           "value": "https://belladent.vercel.app"
         },

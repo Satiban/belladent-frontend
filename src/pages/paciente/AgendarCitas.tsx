@@ -425,15 +425,6 @@ export default function AgendarCita() {
     );
   }, [odoDet]);
 
-  const consultorioDefaultLabel = useMemo(() => {
-    if (!consultorioDefaultId) return null;
-    const c = consultorios.find((x) => x.id === consultorioDefaultId);
-    if (!c) return `Consultorio ${consultorioDefaultId}`;
-    return (
-      c.nombre ?? (c.numero ? `Consultorio ${c.numero}` : `Consultorio ${c.id}`)
-    );
-  }, [consultorioDefaultId, consultorios]);
-
   const detOrdenadas = useMemo(() => {
     const base = Array.isArray(odoDet?.especialidades_detalle)
       ? [...odoDet!.especialidades_detalle!]
@@ -1308,7 +1299,7 @@ export default function AgendarCita() {
 
         {/* Perfil */}
         <div className="rounded-xl bg-white shadow p-4">
-          <h2 className="text-sm font-semibold mb-3">Perfil</h2>
+          <h2 className="text-lg font-semibold mb-3">Perfil</h2>
           {!odoId ? (
             <div className="text-sm text-gray-500">
               Selecciona un odontólogo para ver su perfil.
@@ -1328,10 +1319,10 @@ export default function AgendarCita() {
                     <img
                       src={fotoURL}
                       alt={odoNombre}
-                      className="h-28 w-28 rounded-full object-cover border shadow-sm"
+                      className="h-55 w-55 rounded-full object-cover border-2 border-white shadow"
                     />
                   ) : (
-                    <div className="h-28 w-28 rounded-full bg-gray-200 flex items-center justify-center text-lg font-semibold">
+                    <div className="h-55 w-55 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center text-white text-3xl font-bold border-2 border-white shadow">
                       {initialsFromName(odoNombre)}
                     </div>
                   )}
@@ -1341,31 +1332,25 @@ export default function AgendarCita() {
                   {odoNombre || "Odontólogo"}
                 </div>
 
-                {consultorioDefaultLabel && (
-                  <div className="text-xs text-gray-600 -mt-1">
-                    Consultorio por defecto: <b>{consultorioDefaultLabel}</b>
-                  </div>
-                )}
-
                 <div className="md:text-left">
-                  <div className="text-sm font-medium mb-1">Especialidades</div>
+                  <div className="text-base font-medium mb-1">Especialidades</div>
                   <ul className="space-y-1">
                     {(odoDet.especialidades_detalle ?? []).length > 0 ? (
                       detOrdenadas.map((e, idx) => {
                         const nombreEsp = e?.nombre || "Odontología general";
                         const atiende = e?.estado !== false;
                         return (
-                          <li key={idx} className="text-sm text-gray-700">
+                          <li key={idx} className="text-base text-gray-700">
                             <div className="flex items-start justify-between gap-3">
                               <div className="flex-1">
                                 • {nombreEsp}
-                                <div className="text-xs text-gray-500 ml-4">
+                                <div className="text-sm text-gray-500 ml-4">
                                   {e?.universidad ? e.universidad : "—"}
                                 </div>
                               </div>
                               <span
                                 className={[
-                                  "shrink-0 px-2 py-0.5 rounded border text-[11px] mt-0.5",
+                                  "shrink-0 px-3 py-1 rounded border text-[15px] mt-0.5 font-semibold",
                                   atiende
                                     ? "bg-green-100 text-green-800 border-green-200"
                                     : "bg-gray-200 text-gray-700 border-gray-300",
@@ -1378,13 +1363,13 @@ export default function AgendarCita() {
                         );
                       })
                     ) : (
-                      <li className="text-sm text-gray-700">
+                      <li className="text-base text-gray-700">
                         <div className="flex items-start justify-between gap-3">
                           <div className="flex-1">
                             • Odontología general
-                            <div className="text-xs text-gray-500 ml-4">—</div>
+                            <div className="text-sm text-gray-500 ml-4">—</div>
                           </div>
-                          <span className="shrink-0 px-2 py-0.5 rounded border text-[11px] mt-0.5 bg-green-100 text-green-800 border-green-200">
+                          <span className="shrink-0 px-3 py-1 rounded border text-[15px] mt-0.5 font-semibold bg-green-100 text-green-800 border-green-200">
                             Atiende
                           </span>
                         </div>
@@ -1396,10 +1381,10 @@ export default function AgendarCita() {
 
               {/* DERECHA: horarios */}
               <div className="md:justify-self-end w-full md:pl-6 md:border-l md:border-gray-200">
-                <div className="text-sm font-medium mb-2">
+                <div className="text-lg font-medium mb-2">
                   Horarios de atención
                 </div>
-                <div className="text-sm text-gray-700">
+                <div className="text-base text-gray-700">
                   {(() => {
                     const dias = [
                       "Lun",

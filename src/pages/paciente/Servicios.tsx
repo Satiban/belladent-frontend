@@ -305,25 +305,27 @@ const Servicios: React.FC = () => {
                 showTooltip={true}
                 displayOverlayContent={true}
                 overlayContent={
-                  <div className="m-4 rounded-2xl bg-white p-3 border border-white transition-all duration-300 hover:bg-blue-50/95 hover:border-blue-200/40">
+                  <div className="rounded-2xl p-2 transition-all duration-300 hover:bg-blue-50/95 hover:border-blue-200/40">
                     <div className="flex items-center gap-3">
-                      {foto ? (
-                        <img
-                          src={foto}
-                          alt={nombreProfesional(p)}
-                          className="h-12 w-12 rounded-full object-cover border-2 border-white flex-shrink-0 transition-all duration-300 hover:border-blue-300"
-                        />
-                      ) : (
-                        <div className="h-12 w-12 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center text-white text-sm font-bold flex-shrink-0 transition-all duration-300 hover:from-blue-500 hover:to-blue-700">
-                          {iniciales(p)}
-                        </div>
-                      )}
+                    <div className="pl-3 pt-2">
+                        {foto ? (
+                          <img
+                            src={foto}
+                            alt={nombreProfesional(p)}
+                            className="h-35 w-35 rounded-full object-cover border-2 border-white flex-shrink-0 transition-all duration-300 hover:border-blue-300"
+                          />
+                        ) : (
+                          <div className="h-35 w-35 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center text-white text-sm font-bold flex-shrink-0 transition-all duration-300 hover:from-blue-500 hover:to-blue-700">
+                            {iniciales(p)}
+                          </div>
+                        )}
+                      </div>
                       <div className="min-w-0 flex-1">
-                        <h3 className="font-bold text-sm text-gray-900 truncate transition-colors duration-300 hover:text-blue-700">
+                        <h3 className="font-bold text-base text-gray-900 truncate transition-colors duration-300 hover:text-blue-700">
                           {nombreProfesional(p)}
                         </h3>
-                        <div className="text-[11px] text-gray-700 flex items-center gap-1 font-medium transition-colors duration-300 hover:text-blue-600">
-                          <Users size={12} />
+                        <div className="text-sm text-gray-700 flex items-center gap-1 font-medium transition-colors duration-300 hover:text-blue-600">
+                          <Users size={14} />
                           Profesional de la clínica
                         </div>
                       </div>
@@ -341,7 +343,7 @@ const Servicios: React.FC = () => {
                     </div>
                   </div>
                   {/* Especialidades (detalle con "Atiende/No atiende", como en Perfil) */}
-                  <div className="mt-3">
+                  <div className="mt-22">
                     <div className="text-sm font-medium mb-1">
                       Especialidades
                     </div>
@@ -351,17 +353,17 @@ const Servicios: React.FC = () => {
                           const nombreEsp = e?.nombre || "Odontología general";
                           const atiende = e?.estado !== false;
                           return (
-                            <li key={idx} className="text-sm text-gray-700">
+                            <li key={idx} className="text-base text-gray-700">
                               <div className="flex items-start justify-between gap-3">
                                 <div className="flex-1">
                                   • {nombreEsp}
-                                  <div className="text-xs text-gray-500 ml-4">
+                                  <div className="text-sm text-gray-500 ml-4">
                                     {e?.universidad ? e.universidad : "—"}
                                   </div>
                                 </div>
                                 <span
                                   className={[
-                                    "shrink-0 px-2 py-0.5 rounded border text-[11px] mt-0.5",
+                                    "shrink-0 px-3 py-1 rounded border text-[15px] mt-0.5 font-semibold",
                                     atiende
                                       ? "bg-green-100 text-green-800 border-green-200"
                                       : "bg-gray-200 text-gray-700 border-gray-300",
@@ -375,15 +377,15 @@ const Servicios: React.FC = () => {
                         })
                       ) : (
                         // Fallback si no viene especialidades_detalle: muestra genérico
-                        <li className="text-sm text-gray-700">
+                        <li className="text-base text-gray-700">
                           <div className="flex items-start justify-between gap-3">
                             <div className="flex-1">
                               • Odontología general
-                              <div className="text-xs text-gray-500 ml-4">
+                              <div className="text-sm text-gray-500 ml-4">
                                 —
                               </div>
                             </div>
-                            <span className="shrink-0 px-2 py-0.5 rounded border text-[11px] mt-0.5 bg-green-100 text-green-800 border-green-200">
+                            <span className="shrink-0 px-3 py-1 rounded border text-[15px] mt-0.5 font-semibold bg-green-100 text-green-800 border-green-200">
                               Atiende
                             </span>
                           </div>

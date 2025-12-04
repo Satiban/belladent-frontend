@@ -65,7 +65,22 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [usuario, setUsuario] = useState<Usuario | null>(() => {
     const stored = localStorage.getItem("usuario");
-    return stored ? JSON.parse(stored) : null;
+    if (!stored) return null;
+    
+    try {
+      const parsed = JSON.parse(stored);
+      
+      // Detectar si la foto está encriptada (comienza con "gAAAAA")
+      if (parsed?.foto && typeof parsed.foto === 'string' && parsed.foto.startsWith('gAAAAA')) {
+        console.warn('⚠️ URL de foto encriptada detectada. Limpiando localStorage...');
+        localStorage.removeItem("usuario");
+        return null;
+      }
+      
+      return parsed;
+    } catch {
+      return null;
+    }
   });
 
   // Persistencia en localStorage
@@ -93,6 +108,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     try {
       const { data: me } = await api.get("/usuarios/me/");
       let merged: Usuario = { ...(me as Usuario) };
+
+      // Validación adicional: si la foto viene encriptada, limpiar
+      if (merged?.foto && typeof merged.foto === 'string' && merged.foto.startsWith('gAAAAA')) {
+        console.error('❌ La API devolvió una URL encriptada. Esto es un error del backend.');
+        merged.foto = null;
+      }
 
       // si el usuario es odontólogo (id_rol=3) o por si acaso, consultamos /odontologos/me
       try {
